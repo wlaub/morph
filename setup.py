@@ -7,6 +7,8 @@ VERSION = "1.0"
 REQUIRES = [
 'gimpformats',
 #'pillow', - implied by gimpformats
+'tabulate',
+
 ]
 
 setup(
