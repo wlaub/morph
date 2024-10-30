@@ -8,7 +8,7 @@ REQUIRES = [
 'gimpformats',
 #'pillow', - implied by gimpformats
 'tabulate',
-
+'opencv-contrib-python',
 ]
 
 setup(
