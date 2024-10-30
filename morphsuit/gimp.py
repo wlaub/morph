@@ -2,9 +2,25 @@ import os
 
 from collections import defaultdict
 
+import cv2
+import numpy as np
 from PIL import Image, ImageChops
 
 from gimpformats.gimpXcfDocument import GimpDocument
+
+def pil_to_cv(x):
+    if x.has_transparency_data:
+        return cv2.cvtColor(np.array(x), cv2.COLOR_RGBA2BGRA)
+    else:
+        return cv2.cvtColor(np.array(x), cv2.COLOR_RGB2BGR)
+
+def cv_to_pil(x):
+    if x.shape[2] == 3:
+        return Image.fromarray(cv2.cvtColor(x, cv2.COLOR_BGR2RGB))
+    elif x.shape[2] == 4:
+        return Image.fromarray(cv2.cvtColor(x, cv2.COLOR_BGRA2RGBA))
+    else:
+        raise ValueError(f'Not enough dimensions in {x.shape}')
 
 class WrappedLayer():
     def __init__(self, layer):
@@ -108,6 +124,14 @@ class GimpProject():
         h = int(round(h))
         return base_image.resize((w,h))
 
+    def expand_layers(self, layer_group, amount):
+        for name in self.groups[layer_group]:
+            layer = self.layers[name]
+            a = pil_to_cv(layer.image)
+            kernel = np.ones((amount, amount), np.uint8)
+            a = cv2.dilate(a, kernel, iterations=1)
+            a = cv_to_pil(a)
+            layer.image = a
 
 
     def mask_layers(self, target_layer, mask_layer, crop_to_mask = False) -> Image:

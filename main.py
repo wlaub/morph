@@ -59,6 +59,7 @@ print(tabulate.tabulate(rows))
 for color in colors:
     print('#'*coverage[color])
 
+#project.expand_layers('sprites', 100)
 
 #Build the frames
 for frame in range(frame_count):
