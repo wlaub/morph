@@ -45,14 +45,18 @@ coverage=defaultdict(lambda: 0)
 sequences = {x: [] for x in masks.keys()}
 quences = {x: [] for x in masks.keys()}
 for idx in range(frame_count):
-    for triset, (offset, step_offset) in masks.items():
+    for mask_name in project.groups['masks']:
+        if not mask_name in masks.keys():
+            print(f'Warning: unknown mask {mask_name}')
+            continue
+        offset, step_offset = masks[mask_name]
         color_index = frame_to_color_index(idx, offset, step_offset, N)
         color = color_index_to_color(color_index)
-        if len(sequences[triset]) == 0 or quences[triset][-1] != color_index:
-            sequences[triset].append(color)
-            quences[triset].append(color_index)
+        if len(sequences[mask_name]) == 0 or quences[mask_name][-1] != color_index:
+            sequences[mask_name].append(color)
+            quences[mask_name].append(color_index)
         else:
-            sequences[triset].append('')
+            sequences[mask_name].append('')
         coverage[str(color)]+=1
 rows = zip(*list(sequences.values()))
 print(tabulate.tabulate(rows))
@@ -67,7 +71,11 @@ for frame in range(frame_count):
     #Build the entire frame
     composed_frame = project.make_new_image()
 
-    for mask_name, (offset, step_offset) in masks.items():
+    for mask_name in project.groups['masks']:
+        if not mask_name in masks.keys():
+            print(f'Warning: unknown mask {mask_name}')
+            continue
+        offset, step_offset = masks[mask_name]
         color_index = frame_to_color_index(frame, offset, step_offset, N)
         color = color_index_to_color(color_index)
 

@@ -52,11 +52,14 @@ class GimpProject():
     def init_layers(self):
         self.layers = {}
         self.groups = defaultdict(list)
+        self.variables = {}
+
         self.int_layers = []
         active_group = None
         for layer in self.data.layers:
             if layer.isGroup:
                 active_group = layer.name
+
                 continue
             self.layers[layer.name] = WrappedLayer(layer)
 
@@ -128,7 +131,7 @@ class GimpProject():
         for name in self.groups[layer_group]:
             layer = self.layers[name]
             a = pil_to_cv(layer.image)
-            kernel = np.ones((amount, amount), np.uint8)
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (amount, amount))
             a = cv2.dilate(a, kernel, iterations=1)
             a = cv_to_pil(a)
             layer.image = a
@@ -186,7 +189,7 @@ class GimpProject():
         if gui_scale:
             tile_size *= 6
 
-        for sprite_name, frames in self.sprites.items():
+        for sprite_name, frames in sorted(self.sprites.items()):
             print(f'Writing {sprite_name}')
             frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
             base = frames[0]
@@ -196,7 +199,7 @@ class GimpProject():
         if gui_scale:
             tile_size *= 6
 
-        for sprite_name, frames in self.sprites.items():
+        for sprite_name, frames in sorted(self.sprites.items()):
             print(f'Writing {sprite_name}')
             frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
             for idx, frame in enumerate(frames):
