@@ -13,8 +13,7 @@ project = gimp.GimpProject('inputs.xcf', 'output')
 tile_size = 39
 pixel_size = 2061
 
-part_letters = 'abcdefghijkm'
-colors = [str(x) for x in range(21)]
+colors = list(map(str,project.int_layers))
 
 frame_count = len(colors)*2-2
 
@@ -42,9 +41,6 @@ def color_index_to_color(index):
         return frame_count - index
 
 coverage=defaultdict(lambda: 0)
-
-rendered_frames = {}
-
 #Print the color sequences
 sequences = {x: [] for x in masks.keys()}
 quences = {x: [] for x in masks.keys()}
@@ -58,20 +54,18 @@ for idx in range(frame_count):
         else:
             sequences[triset].append('')
         coverage[str(color)]+=1
-
 rows = zip(*list(sequences.values()))
 print(tabulate.tabulate(rows))
-
 for color in colors:
     print('#'*coverage[color])
 
-#print(coverage)
 
 #Build the frames
 for frame in range(frame_count):
     print(f'frame {frame}')
     #Build the entire frame
     composed_frame = project.make_new_image()
+
     for mask_name, (offset, step_offset) in masks.items():
         color_index = frame_to_color_index(frame, offset, step_offset, N)
         color = color_index_to_color(color_index)
@@ -79,31 +73,12 @@ for frame in range(frame_count):
         a = project.mask_layers(str(color), mask_name)
         project.paste(composed_frame, a)
 
-
-
-    project.paste(composed_frame, 'lines')
-
+    project.paste_group(composed_frame, 'overlays')
 
     #Chop it up into individual parts
-    for letter in part_letters:
-        out_frame = project.mask_layers(composed_frame, letter, crop_to_mask=True)
-        out_frame = project.scale_to_tiles(out_frame, pixel_size, tile_size)
+    project.extract_sprite_frames(composed_frame)
 
-        _frames = rendered_frames.setdefault(letter, [])
-        _frames.append(out_frame)
-
-#To save gif
-for letter, frames in rendered_frames.items():
-    base = frames[0]
-    base.save(f'output/z_{letter}.gif', save_all=True, append_images=frames[1:], duration=100, loop=0, disposal=2)
-
-#To save sprite
-if False:
-    for letter, frames in rendered_frames.items():
-        for idx, frame in enumerate(frames):
-            frame.save(f'output/sprite/{letter}{idx:02}.png')
-
-
+project.export_sprites_gif('output/gifs', pixel_size, tile_size, gui_scale=True)
 
 
 
