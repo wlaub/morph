@@ -8,15 +8,6 @@ from PIL import Image, ImageChops
 
 from morphsuit import morph, gimp
 
-project = gimp.GimpProject('inputs.xcf', 'output')
-
-tile_size = 39
-pixel_size = 2061
-
-colors = list(map(str,project.int_layers))
-
-frame_count = len(colors)*2-2
-
 #0, 6, 13, 20, 27, 34
 N=5 #color hold length in frames
 masks = {
@@ -28,6 +19,14 @@ masks = {
 '2r2b': (27,4),
 'extra': (13,3),
 }
+
+
+project = gimp.GimpProject('inputs.xcf', 'output')
+
+colors = list(map(str,project.int_layers))
+
+frame_count = len(colors)*2-2
+
 
 def frame_to_color_index(frame, offset, step_offset, N):
     index = offset+int((frame+step_offset)/N)*N
@@ -87,7 +86,7 @@ for frame in range(frame_count):
     #Chop it up into individual parts
     project.extract_sprite_frames(composed_frame)
 
-project.export_sprites_gif('output/gifs', pixel_size, tile_size, gui_scale=True)
+project.export_sprites_gif('output/gifs', gui_scale=True)
 
 
 

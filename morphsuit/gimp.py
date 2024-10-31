@@ -59,6 +59,17 @@ class GimpProject():
         for layer in self.data.layers:
             if layer.isGroup:
                 active_group = layer.name
+                if '=' in layer.name:
+                    for piece in layer.name.split(','):
+                        try:
+                            var_name, var_val = [x.strip() for x in piece.split('=')]
+                            try:
+                                var_val = float(var_val)
+                            except ValueError:
+                                pass
+                            self.variables[var_name] = var_val
+                        except Exception as e:
+                            print(f'Failed to process variable layer {piece}: {e}')
 
                 continue
             self.layers[layer.name] = WrappedLayer(layer)
@@ -178,13 +189,28 @@ class GimpProject():
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
 
-    def export_sprites_gif(self, output_dir, pixel_size, tile_size, gui_scale = False, **custom_gif_kwargs):
+    def _get_export_sizes(self, pixel_size, tile_size):
+        if pixel_size is None:
+            try:
+                pixel_size = self.variables['pixel_size']
+            except KeyError:
+                raise KeyError(f'No pixel_size specified in project {self.variables.keys()}')
+        if tile_size is None:
+            try:
+                tile_size = self.variables['tile_size']
+            except KeyError:
+                raise KeyError(f'No tile_size specified in project {self.variables.keys()}')
+        return pixel_size, tile_size
+
+    def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, **custom_gif_kwargs):
         gif_kwargs = {
             'duration': 100,
             'loop': 0,
             'disposal': 2,
         }
         gif_kwargs.update(custom_gif_kwargs)
+
+        pixel_size, tile_size = self._get_export_sizes(pixel_size, tile_size)
 
         if gui_scale:
             tile_size *= 6
@@ -195,7 +221,9 @@ class GimpProject():
             base = frames[0]
             base.save(os.path.join(output_dir, f'{sprite_name}.gif'), save_all=True, append_images=frames[1:], **gif_kwargs)
 
-    def export_sprites(self, output_dir, pixel_size, tile_size, gui_scale = False):
+    def export_sprites(self, output_dir, pixel_size=None, tile_size=None, gui_scale = False):
+        pixel_size, tile_size = self._get_export_sizes(pixel_size, tile_size)
+
         if gui_scale:
             tile_size *= 6
 
