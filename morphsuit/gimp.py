@@ -4,7 +4,7 @@ from collections import defaultdict
 
 import cv2
 import numpy as np
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageOps
 
 from gimpformats.gimpXcfDocument import GimpDocument
 
@@ -92,12 +92,15 @@ class GimpProject():
     def size(self):
         return self.data.width, self.data.height
 
-    def export_layers(self, loud=True):
+    def export_layers(self, layer_group = None, loud=True):
         for layer in self.data.layers:
+            if layer_group is not None and layer.name not in self.groups[layer_group]:
+                continue
             name = os.path.join(self.cache_dir, f'{layer.name}.png')
             if loud:
                 print(f'Saving {name}')
             layer.image.save(name)
+            self.layers[layer.name].image = layer.image
 
     def _sub_cache(self, loud=True):
         for name, layer in self.layers.items():
@@ -138,15 +141,31 @@ class GimpProject():
         h = int(round(h))
         return base_image.resize((w,h))
 
+    def pad_layer_bounds(self, layer, amount):
+        layer.xOffset -= amount
+        layer.yOffset -= amount
+        layer.width += amount*2
+        layer.height += amount*2
+        layer.image = ImageOps.expand(layer.image, amount, (0,0,0,0))
+
+
     def expand_layers(self, layer_group, amount):
         for name in self.groups[layer_group]:
             layer = self.layers[name]
+            self.pad_layer_bounds(layer, amount)
             a = pil_to_cv(layer.image)
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (amount, amount))
             a = cv2.dilate(a, kernel, iterations=1)
             a = cv_to_pil(a)
             layer.image = a
 
+    def _get_layer_bbox(self, layer):
+        x, y, w, h = (layer.xOffset, layer.yOffset, layer.width, layer.height)
+        dx, dy, dw, dh = layer.image.getbbox()
+        dw -= dx
+        dh -= dy
+        bbox = (x+dx,y+dy,x+dx+dw,y+dy+dh)
+        return bbox
 
     def mask_layers(self, target_layer, mask_layer, crop_to_mask = False) -> Image:
         if isinstance(target_layer, str):
@@ -156,9 +175,9 @@ class GimpProject():
 
         if isinstance(mask_layer, WrappedLayer):
             if crop_to_mask:
-#                bbox = mask_layer.getbbox()
-                x, y, w, h = (mask_layer.xOffset, mask_layer.yOffset, mask_layer.width, mask_layer.height)
-                bbox = (x,y,x+w,y+h)
+                #TODO it might be desirable to have some means of instead
+                #using the smallest enclosing box that fits on the tile grid
+                bbox = self._get_layer_bbox(mask_layer)
             mask_layer = mask_layer.image
         else:
             if crop_to_mask:
@@ -168,6 +187,7 @@ class GimpProject():
 
         if crop_to_mask:
             result = target_layer.crop(bbox)
+            mask_layer = mask_layer.crop(mask_layer.getbbox())
         else:
             result = target_layer.copy()
 

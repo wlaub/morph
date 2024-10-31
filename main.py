@@ -23,6 +23,9 @@ masks = {
 
 project = gimp.GimpProject('inputs.xcf', 'output')
 
+#project.export_layers('sprites')
+#exit()
+
 colors = list(map(str,project.int_layers))
 
 frame_count = len(colors)*2-2
@@ -62,13 +65,13 @@ print(tabulate.tabulate(rows))
 for color in colors:
     print('#'*coverage[color])
 
-#project.expand_layers('sprites', 100)
+project.expand_layers('sprites', 10)
 
 #Build the frames
 for frame in range(frame_count):
     print(f'frame {frame}')
     #Build the entire frame
-    composed_frame = project.make_new_image()
+    composed_frame = project.make_new_image(color=(255,255,255,255))
 
     for mask_name in project.groups['masks']:
         if not mask_name in masks.keys():
