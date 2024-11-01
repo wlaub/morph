@@ -1,3 +1,4 @@
+import math
 import os
 
 from collections import defaultdict
@@ -149,7 +150,10 @@ class GimpProject():
         if isinstance(paste_image, str):
             paste_image = self.layers[paste_image].image
 
-        base_image.paste(paste_image, (0,0), paste_image)
+        if paste_image.has_transparency_data:
+            base_image.paste(paste_image, (0,0), paste_image)
+        else:
+            base_image.paste(paste_image, (0,0))
 
     def paste_group(self, base_image, group_name):
         for paste_image in self.groups[group_name]:
@@ -182,6 +186,8 @@ class GimpProject():
             a = cv_to_pil(a)
             layer.image = a
 
+
+
     def _get_layer_bbox(self, layer):
         x, y, w, h = (layer.xOffset, layer.yOffset, layer.width, layer.height)
         dx, dy, dw, dh = layer.image.getbbox()
@@ -198,9 +204,14 @@ class GimpProject():
 
         if isinstance(mask_layer, WrappedLayer):
             if crop_to_mask:
+                #TODO separate the masking and cropping steps
                 #TODO it might be desirable to have some means of instead
                 #using the smallest enclosing box that fits on the tile grid
                 bbox = self._get_layer_bbox(mask_layer)
+                pixel_size, tile_size = self._get_export_sizes(None, None)
+                grid_offset = self.get_grid_offset('r')
+                ebbox = self.expand_bbox_to_tiles(bbox, grid_offset, pixel_size, tile_size)
+
             mask_layer = mask_layer.image
         else:
             if crop_to_mask:
@@ -231,6 +242,51 @@ class GimpProject():
 
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
+
+    def get_grid_offset(self, varname, pixel_size = None, tile_size = None):
+        """
+        get average grid offset in image pixels from a list of coordinates
+        """
+        coords = list(self.variables[varname])
+
+        pixel_size,tile_size = self._get_export_sizes(pixel_size, tile_size)
+        scale_factor = tile_size/pixel_size
+
+        for idx, vals in enumerate(coords):
+
+            vals = tuple(x*scale_factor for x in vals)
+            vals = tuple(x-int(x) for x in vals)
+            vals = tuple(x/scale_factor for x in vals)
+
+            coords[idx] = vals
+
+        cols = list(zip(*coords))
+
+        avgs = [sum(x)/len(x) for x in cols]
+#        devs = [np.std(x) for x in cols]
+
+        return avgs
+
+    def expand_bbox_to_tiles(self, bbox, grid_offset, pixel_size, tile_size):
+        left, top, right, bot = bbox
+
+        grid_size = pixel_size/tile_size #px per tile
+
+        #gx + gs*N = left
+        #N = (left-gx)/gs
+
+        left = math.floor((left-grid_offset[0])/grid_size)*grid_size + grid_offset[0]
+        right = math.ceil((right-grid_offset[0])/grid_size)*grid_size + grid_offset[0]
+
+        top = math.floor((top-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
+        bot = math.ceil((bot-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
+
+        new_bbox = left, top, right, bot
+
+        new_bbox = [round(x) for x in new_bbox]
+
+        return new_bbox
+
 
     def _get_export_sizes(self, pixel_size, tile_size):
         if pixel_size is None:

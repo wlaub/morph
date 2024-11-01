@@ -27,6 +27,9 @@ print(project.variables)
 
 old_coords = []
 coords = project.variables['r']
+
+print(project.get_grid_offset('r'))
+
 print(coords)
 
 import numpy as np
@@ -40,18 +43,6 @@ tile_size = (37**2+29**2)**0.5
 
 scale_factor = tile_size/pixel_size
 print(scale_factor)
-
-#pixel_size = ((1127.5-1023.5)**2+(1035.5-928.5)**2)**0.5
-#tile_size = (2**2+1**2)**0.5
-
-#scale_factor = tile_size/pixel_size
-#print(scale_factor)
-
-
-
-#37, 29
-#123,84
-#2078,1622
 
 for idx, vals in enumerate(coords):
 
