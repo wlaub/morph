@@ -21,6 +21,7 @@ masks = {
 }
 
 project = gimp.GimpProject('inputs.xcf', 'output')
+#project.export_layers('sprites')
 
 colors = list(map(str,project.int_layers))
 
@@ -67,7 +68,7 @@ for frame in range(frame_count):
     print(f'frame {frame}')
     #Build the entire frame
     composed_frame = project.make_new_image(color=(255,255,255,255))
-    project.paste(composed_frame, 'grid')
+#    project.paste(composed_frame, 'grid')
 
     for mask_name in project.groups['masks']:
         if not mask_name in masks.keys():

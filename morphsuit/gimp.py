@@ -204,9 +204,6 @@ class GimpProject():
 
         if isinstance(mask_layer, WrappedLayer):
             if crop_to_mask:
-                #TODO separate the masking and cropping steps
-                #TODO it might be desirable to have some means of instead
-                #using the smallest enclosing box that fits on the tile grid
                 bbox = self._get_layer_bbox(mask_layer)
                 pixel_size, tile_size = self._get_export_sizes(None, None)
                 grid_offset = self.get_grid_offset('r')
@@ -220,8 +217,17 @@ class GimpProject():
             target_layer = target_layer.image
 
         if crop_to_mask:
-            result = target_layer.crop(bbox)
+            result = target_layer.crop(ebbox)
+            dl = bbox[0] - ebbox[0]
+            dt = bbox[1] - ebbox[1]
+            dr = ebbox[2] - bbox[2]
+            db = ebbox[3] - bbox[3]
+
+            dw = dl+dr
+            dh = dt+db
+
             mask_layer = mask_layer.crop(mask_layer.getbbox())
+            mask_layer = ImageOps.expand(mask_layer, (dl, dt, dr, db))
         else:
             result = target_layer.copy()
 
