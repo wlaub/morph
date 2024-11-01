@@ -49,10 +49,29 @@ class GimpProject():
     def init_sprites(self):
         self.sprites = {}
 
+    @classmethod
+    def _convert_number(cls, x):
+        try:
+            return float(x)
+        except ValueError:
+            return x
+
+    @classmethod
+    def _convert_list(cls, x):
+        if not isinstance(x,str):
+            return x
+        if not ',' in x:
+            return x
+
+        parts = [y.strip() for y in x.split(',')]
+        return list(map(cls._convert_number, parts))
+
     def init_layers(self):
         self.layers = {}
         self.groups = defaultdict(list)
         self.variables = {}
+
+        variable_count = defaultdict(lambda: 0)
 
         self.int_layers = []
         active_group = None
@@ -60,14 +79,18 @@ class GimpProject():
             if layer.isGroup:
                 active_group = layer.name
                 if '=' in layer.name:
-                    for piece in layer.name.split(','):
+                    for piece in layer.name.split('|'):
                         try:
                             var_name, var_val = [x.strip() for x in piece.split('=')]
-                            try:
-                                var_val = float(var_val)
-                            except ValueError:
-                                pass
-                            self.variables[var_name] = var_val
+                            var_val = self._convert_number(var_val)
+                            var_val = self._convert_list(var_val)
+                            if variable_count[var_name] > 0:
+                                if variable_count[var_name] == 1:
+                                    self.variables[var_name] = [self.variables[var_name]]
+                                self.variables[var_name].append(var_val)
+                            else:
+                                self.variables[var_name] = var_val
+                            variable_count[var_name]+= 1
                         except Exception as e:
                             print(f'Failed to process variable layer {piece}: {e}')
 

@@ -9,6 +9,7 @@ REQUIRES = [
 #'pillow', - implied by gimpformats
 'tabulate',
 'opencv-contrib-python',
+'pygame',
 ]
 
 setup(

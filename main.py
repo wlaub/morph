@@ -20,16 +20,11 @@ masks = {
 'extra': (13,3),
 }
 
-
 project = gimp.GimpProject('inputs.xcf', 'output')
-
-#project.export_layers('sprites')
-#exit()
 
 colors = list(map(str,project.int_layers))
 
 frame_count = len(colors)*2-2
-
 
 def frame_to_color_index(frame, offset, step_offset, N):
     index = offset+int((frame+step_offset)/N)*N
