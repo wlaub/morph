@@ -139,13 +139,13 @@ while True:
             pygame.quit()
             exit()
         elif event.type == MOUSEBUTTONDOWN:
-            if event.button == RMB:
+            if event.button == MMB:
                 drag = True
                 drag_ref = mpos
             elif event.button == LMB:
                 lmb_down = True
         elif event.type == MOUSEBUTTONUP:
-            if event.button == RMB:
+            if event.button == MMB:
                 drag = False
                 offset[0] += mpos[0]-drag_ref[0]
                 offset[1] += mpos[1]-drag_ref[1]
@@ -221,8 +221,8 @@ while True:
     for bbox in sprite_boxes:
         xl = ex+bbox[0]*zoom
         yt = ey+bbox[1]*zoom
-        xr = ex+bbox[2]*zoom
-        yb = ey+bbox[3]*zoom
+        xr = ex+bbox[2]*zoom+1
+        yb = ey+bbox[3]*zoom+1
         pygame.gfxdraw.rectangle(screen, pygame.Rect(xl, yt, xr-xl, yb-yt), (0,255,0))
 
 #    for dx in range(left, right+1):
