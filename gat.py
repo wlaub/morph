@@ -76,6 +76,53 @@ import pygame.gfxdraw
 import pygame.transform
 from pygame.locals import *
 
+LMB = 1
+MMB = 2
+RMB = 3
+
+class DraggablePoint():
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.active = False
+
+    def set_pos(self, mpos):
+        self.x = mpos[0]-10
+        self.y = mpos[1]
+
+    def start_drag(self, mpos, grid_size):
+        if self.active:
+            return False
+
+        dist = (mpos[0]-self.x)**2 + (mpos[1]-self.y)**2
+        if dist > grid_size*grid_size/9:
+            return False
+
+        self.set_pos(mpos)
+
+        self.active = True
+        return True
+
+    def stop_drag(self, mpos):
+        if not self.active:
+            return
+
+        self.set_pos(mpos)
+        self.active = False
+
+    def update_drag(self, mpos):
+        if self.active:
+            self.set_pos(mpos)
+
+
+    def render(self, screen, mpos, offset, zoom, radius):
+        x = self.x
+        y = self.y
+        pygame.gfxdraw.filled_circle(screen,
+            round(offset[0]+x*zoom), round(offset[1]+y*zoom),
+            radius,(0,255,255, 128))
+
+
 
 pygame.init()
 
@@ -97,6 +144,8 @@ grid_offset = [x*ingame_pixel_size for x in grid_offset]
 extra_points = [tuple(y*ingame_pixel_size for y in x) for x in extra_points]
 print(extra_points)
 
+magic_points = [DraggablePoint(*x) for x in extra_points]
+
 pg_grid_image = pygame.transform.scale_by(pg_grid_image_base, zoom)
 
 def clamp_offset(x):
@@ -112,6 +161,15 @@ def clamp_offset(x):
     return result
 
 
+def image_to_local(coords, offset, zoom):
+    return tuple(o+c*zoom for c,o in zip(coords, offset))
+
+def local_to_image(coords, offset, zoom):
+    return tuple((c-o)/zoom for c,o in zip(coords, offset))
+
+
+
+
 drag = False
 drag_ref = [0,0]
 while True:
@@ -122,20 +180,27 @@ while True:
 
     old_zoom = zoom
     drag_off = [0,0]
+    lmb_down = False
+    lmb_up = False
     for event in pygame.event.get():
 
         if event.type == QUIT:
             pygame.quit()
             exit()
         elif event.type == MOUSEBUTTONDOWN:
-            drag = True
-            drag_ref = mpos
+            if event.button == RMB:
+                drag = True
+                drag_ref = mpos
+            elif event.button == LMB:
+                lmb_down = True
         elif event.type == MOUSEBUTTONUP:
-            drag = False
-            offset[0] += mpos[0]-drag_ref[0]
-            offset[1] += mpos[1]-drag_ref[1]
-            offset = clamp_offset(offset)
-
+            if event.button == RMB:
+                drag = False
+                offset[0] += mpos[0]-drag_ref[0]
+                offset[1] += mpos[1]-drag_ref[1]
+                offset = clamp_offset(offset)
+            elif event.button == LMB:
+                lmb_up = True
         elif event.type == MOUSEWHEEL:
             zoom += event.y
             if zoom < 1:
@@ -158,6 +223,8 @@ while True:
 
     if zoom != old_zoom:
         pg_grid_image = pygame.transform.scale_by(pg_grid_image_base, zoom)
+        offset = [o+m*(1/zoom - 1/old_zoom) for o,m in zip(offset, mpos)]
+
         offset = clamp_offset(offset)
 
     if drag:
@@ -168,9 +235,23 @@ while True:
     if drag:
         drag_off = clamp_offset(drag_off)
 
-
     effective_offset = [x*zoom for x in drag_off]
+
     ex, ey = effective_offset
+
+    mpos_image = local_to_image(mpos, effective_offset, zoom)
+
+    if lmb_down:
+        for entry in magic_points:
+            if entry.start_drag(mpos_image, grid_size):
+                break
+
+    if lmb_up:
+         for entry in magic_points:
+            entry.stop_drag(mpos_image)
+
+    for entry in magic_points:
+        entry.update_drag(mpos_image)
 
     screen.blit(pg_grid_image, effective_offset)
 
@@ -183,12 +264,6 @@ while True:
     right = math.floor((-ex-gx+width)/gf)
     top = math.ceil((-ey-gy)/gf)
     bot = math.floor((-ey-gy+height)/gf)
-#    print(left, right, top, bot)
-
-#    print(ex-gx)
-#    print(ex-gx+width/zoom)
-#    print(gf)
-
 
     radius = max(zoom, 3)
 
@@ -196,8 +271,11 @@ while True:
         for dy in range(top, bot+1):
             pygame.gfxdraw.filled_circle(screen, round(ex+gx+gf*dx), round(ey+gy+gf*dy), radius,(255,0,0))
 
-    for x,y in extra_points:
-        pygame.gfxdraw.filled_circle(screen, round(ex+x*zoom), round(ey+y*zoom), radius,(0,255,255))
+    for entry in magic_points:
+        entry.render(screen, mpos, (ex,ey), zoom, radius)
+
+#    for x,y in extra_points:
+#        pygame.gfxdraw.filled_circle(screen, round(ex+x*zoom), round(ey+y*zoom), radius,(0,255,255))
 
 
     pygame.display.update()

@@ -244,7 +244,6 @@ class GimpProject():
 
         for sprite_name in self.groups[sprite_group]:
             out_frame = self.mask_layers(composed_frame, sprite_name, crop_to_mask=True)
-#            out_frame = self.scale_to_tiles(out_frame, pixel_size, tile_size)
 
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)

@@ -67,7 +67,10 @@ project.expand_layers('sprites', 10)
 for frame in range(frame_count):
     print(f'frame {frame}')
     #Build the entire frame
-    composed_frame = project.make_new_image(color=(255,255,255,255))
+    color = (0,0,0,0)
+    if False:
+        color= (255,255,255,255)
+    composed_frame = project.make_new_image(color=color)
 #    project.paste(composed_frame, 'grid')
 
     for mask_name in project.groups['masks']:
@@ -87,6 +90,7 @@ for frame in range(frame_count):
     project.extract_sprite_frames(composed_frame)
 
 project.export_sprites_gif('output/gifs', gui_scale=True)
+project.export_sprites('output/sprites')
 
 
 
