@@ -82,12 +82,20 @@ pixel_size, tile_size = project._get_export_sizes(None, None)
 grid_size = pixel_size/tile_size
 ingame_pixel_size = grid_size/8
 
-extra_points = [[y*tile_size*8/pixel_size for y in x]for x in project.variables['r']]
 grid_offset = project.get_grid_offset('r')
 
+extra_points = [[y*tile_size*8/pixel_size for y in x]for x in project.variables['r']]
 extra_points = [tuple(y*ingame_pixel_size for y in x) for x in extra_points]
-
 magic_points = [DraggablePoint(*x) for x in extra_points]
+
+project.expand_layers('sprites', 10)
+
+sprite_boxes = []
+for layer in project.groups['sprites']:
+    bbox = project._get_layer_bbox(project.layers[layer])
+    bbox = project.expand_bbox_to_tiles(bbox, grid_offset, pixel_size, tile_size)
+    sprite_boxes.append(bbox)
+
 
 pg_grid_image = pygame.transform.scale_by(pg_grid_image_base, zoom)
 
@@ -210,9 +218,17 @@ while True:
 
     radius = max(zoom, 3)
 
-    for dx in range(left, right+1):
-        for dy in range(top, bot+1):
-            pygame.gfxdraw.filled_circle(screen, round(ex+gx+gf*dx), round(ey+gy+gf*dy), radius,(255,0,0))
+    for bbox in sprite_boxes:
+        xl = ex+bbox[0]*zoom
+        yt = ey+bbox[1]*zoom
+        xr = ex+bbox[2]*zoom
+        yb = ey+bbox[3]*zoom
+        pygame.gfxdraw.rectangle(screen, pygame.Rect(xl, yt, xr-xl, yb-yt), (0,255,0))
+
+#    for dx in range(left, right+1):
+#        for dy in range(top, bot+1):
+#            pygame.gfxdraw.filled_circle(screen, round(ex+gx+gf*dx), round(ey+gy+gf*dy), radius,(255,0,0))
+
 
     for entry in magic_points:
         entry.render(screen, mpos, (ex,ey), zoom, radius)
