@@ -1,3 +1,5 @@
+import time
+import math
 from collections import defaultdict
 
 import tabulate
@@ -8,69 +10,6 @@ from PIL import Image, ImageChops
 
 from morphsuit import morph, gimp
 
-#0, 6, 13, 20, 27, 34
-N=5 #color hold length in frames
-masks = {
-'red': (20,0),
-'blue': (0,2),
-'1r1b': (6,1),
-'2r1b': (13,3),
-'1r2b': (34,0),
-'2r2b': (27,4),
-'extra': (13,3),
-}
-
-project = gimp.GimpProject('inputs.xcf', 'output')
-
-print(project.variables)
-#project.export_layers('tools')
-
-old_coords = []
-coords = project.variables['r']
-
-print(project.get_grid_offset('r'))
-
-print(coords)
-
-import numpy as np
-
-pixel_size,tile_size = project._get_export_sizes(None, None)
-scale_factor = tile_size/pixel_size
-print(scale_factor)
-
-pixel_size = ((2078-128)**2+(1622-84)**2)**0.5
-tile_size = (37**2+29**2)**0.5
-
-scale_factor = tile_size/pixel_size
-print(scale_factor)
-
-for idx, vals in enumerate(coords):
-
-    _vals = tuple(x*scale_factor*8 for x in vals)
-    old_coords.append(_vals)
-
-    vals = tuple(x*scale_factor for x in vals)
-    vals = tuple(x-int(x) for x in vals)
-
-    vals = tuple(x*8 for x in vals)
-
-    coords[idx] = vals
-
-cols = list(zip(*coords))
-
-avgs = [sum(x)/len(x) for x in cols]
-devs = [np.std(x) for x in cols]
-
-print(avgs)
-print(devs)
-
-#for key,val in coords.items():
-
-grid_offset = avgs
-extra_points = old_coords
-
-import time
-import math
 import pygame
 import pygame.gfxdraw
 import pygame.transform
@@ -120,9 +59,11 @@ class DraggablePoint():
         y = self.y
         pygame.gfxdraw.filled_circle(screen,
             round(offset[0]+x*zoom), round(offset[1]+y*zoom),
-            radius,(0,255,255, 128))
+            radius,(255,0,255, 255))
 
 
+
+project = gimp.GimpProject('inputs.xcf', 'output')
 
 pygame.init()
 
@@ -137,12 +78,14 @@ screen=pygame.display.set_mode((width, height))
 zoom = 4
 offset = [0,0]
 
+pixel_size, tile_size = project._get_export_sizes(None, None)
 grid_size = pixel_size/tile_size
 ingame_pixel_size = grid_size/8
 
-grid_offset = [x*ingame_pixel_size for x in grid_offset]
+extra_points = [[y*tile_size*8/pixel_size for y in x]for x in project.variables['r']]
+grid_offset = project.get_grid_offset('r')
+
 extra_points = [tuple(y*ingame_pixel_size for y in x) for x in extra_points]
-print(extra_points)
 
 magic_points = [DraggablePoint(*x) for x in extra_points]
 

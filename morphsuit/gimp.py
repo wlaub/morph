@@ -248,6 +248,7 @@ class GimpProject():
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
 
+
     def get_grid_offset(self, varname, pixel_size = None, tile_size = None):
         """
         get average grid offset in image pixels from a list of coordinates
