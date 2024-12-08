@@ -120,6 +120,8 @@ class GimpProject():
         for layer in self.data.layers:
             if layer_group is not None and layer.name not in self.groups[layer_group]:
                 continue
+            if layer.isGroup:
+                continue
             name = os.path.join(self.cache_dir, f'{layer.name}.png')
             if loud:
                 print(f'Saving {name}')
@@ -242,11 +244,15 @@ class GimpProject():
 
     def extract_sprite_frames(self, composed_frame: Image, sprite_group = 'sprites'):
 
+        result = {}
+
         for sprite_name in self.groups[sprite_group]:
             out_frame = self.mask_layers(composed_frame, sprite_name, crop_to_mask=True)
 
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
+            result[sprite_name] = out_frame
+        return result
 
 
     def get_grid_offset(self, varname, pixel_size = None, tile_size = None):
@@ -305,6 +311,9 @@ class GimpProject():
                 tile_size = self.variables['tile_size']
             except KeyError:
                 raise KeyError(f'No tile_size specified in project {self.variables.keys()}')
+        if tile_size > pixel_size:
+            raise ValueError(f'{pixel_size=} < {tile_size=}')
+
         return pixel_size, tile_size
 
     def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, **custom_gif_kwargs):

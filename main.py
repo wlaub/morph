@@ -18,9 +18,17 @@ masks = {
 '1r2b': (34,0),
 '2r2b': (27,4),
 'extra': (13,3),
+
+'stems_a': (20,0),
+'stems_b': (0,2),
+'gills_a': (0,2),
+'gills_b': (20,0),
+'spikes_up': (27,4),
+'spikes_diag': (34,3),
 }
 
 project = gimp.GimpProject('inputs.xcf', 'output')
+#project.export_layers()
 #project.export_layers('sprites')
 
 colors = list(map(str,project.int_layers))
@@ -40,8 +48,9 @@ def color_index_to_color(index):
 
 coverage=defaultdict(lambda: 0)
 #Print the color sequences
-sequences = {x: [] for x in masks.keys()}
-quences = {x: [] for x in masks.keys()}
+sequences = {x: [] for x in project.groups['masks']}
+quences = {x: [] for x in project.groups['masks']}
+
 for idx in range(frame_count):
     for mask_name in project.groups['masks']:
         if not mask_name in masks.keys():
