@@ -1,4 +1,4 @@
-
+import math
 
 
 import numpy as np
@@ -7,6 +7,26 @@ import discorpy.losa.loadersaver as io
 import discorpy.prep.preprocessing as prep
 import discorpy.proc.processing as proc
 import discorpy.post.postprocessing as post
+
+import discorpy.prep.linepattern as lprep
+
+file_path = "gridcal.jpg"
+file_path = 'unwarp_test/inputs/triangles.png'
+output_base = "cal_test"
+num_coef = 5  # Number of polynomial coefficients
+mat0 = io.load_image(file_path) # Load image
+(height, width) = mat0.shape
+slope_hor, dist_hor = lprep.calc_slope_distance_hor_lines(mat0, ratio=0.3, search_range=1)
+slope_ver, dist_ver = lprep.calc_slope_distance_ver_lines(mat0, ratio=0.3, search_range=1)
+print("    Horizontal slope: ", slope_hor, " Distance: ", dist_hor)
+print("    Vertical slope: ", slope_ver, " Distance: ", dist_ver)
+
+ah = math.atan(slope_hor)*180/math.pi
+av = math.atan(slope_ver)*180/math.pi
+print(ah, av)
+
+
+exit(0)
 
 # Initial parameters
 file_path = "cal11.jpg"
