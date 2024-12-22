@@ -47,7 +47,11 @@ class CropBox():
         self.ul = ul or (0,0)
         self.lr = lr or base_image.size
         self.update_params()
+
         self.active = False
+        self.drag_corner = False
+        self.sel_corner = 0
+
         self.eul = None
         self.elr = None
         self.parent = None
@@ -102,10 +106,34 @@ class CropBox():
     def get_size(self):
         return tuple(self.lr[i]-self.ul[i] for i in [0,1])
 
+    def get_corners(self):
+        """
+        ul ur lr ll
+        """
+        ul = self.ul
+        ur = (self.lr[0], self.ul[1])
+        lr = self.lr
+        ll = (self.ul[0], self.lr[1])
+        return ul, ur, lr, ll
+
     def activate(self, mpos):
         if self.active: return
         self.active = True
-        self.eul = self.from_screen(mpos)
+
+        mpos = self.from_screen(mpos)
+        self.eul = self.ul
+        self.elr = self.lr
+
+        s = 100
+
+        for idx, cpos in enumerate(self.get_corners()):
+            if (cpos[0]-mpos[0])**2 + (cpos[1]-mpos[1])**2 < s**2:
+                self.drag_corner = True
+                self.sel_corner = idx
+                return
+
+        self.drag_corner = False
+        self.eul = mpos
         self.elr = self.eul
 
     def abort(self):
@@ -113,7 +141,23 @@ class CropBox():
 
     def update(self, mpos):
         if not self.active: return
-        self.elr = self.from_screen(mpos)
+        mpos = self.from_screen(mpos)
+
+        if not self.drag_corner:
+            self.elr = mpos
+            return
+
+        if self.sel_corner == 0:
+            self.eul = mpos
+        elif self.sel_corner == 1:
+            self.eul = (self.eul[0], mpos[1])
+            self.elr = (mpos[0], self.elr[1])
+        elif self.sel_corner == 2:
+            self.elr = mpos
+        elif self.sel_corner == 3:
+            self.elr = (self.elr[0], mpos[1])
+            self.eul = (mpos[0], self.eul[1])
+
 
     def finish(self, mpos):
         if not self.active: return False
@@ -248,6 +292,41 @@ class GridControl():
         sf = gbw/giw
         result = pygame.transform.scale_by(result, sf)
         return result
+
+    def get_boxes(self):
+        if self.alignment_box.active:
+            ul = self.alignment_box.eul
+            lr = self.alignment_box.elr
+
+            csize = [lr[x]-ul[x] for x in [0,1]]
+
+            gbw = cwidth/GN
+            gbh = cheight/GN
+
+            giw = 100
+            gih = giw*gbh/gbw
+
+            dx = (csize[0]-giw)/(GN-1)
+            dy = (csize[1]-gih)/(GN-1)
+        else:
+            ul = self.alignment_box.ul
+            lr = self.alignment_box.lr
+
+            csize = self.csize
+            gbw = self.gbw; gbh = self.gbh
+            giw = self.giw; gih = self.gih
+            dx = self.dx; dy = self.dy
+
+        result = []
+
+        for x in range(GN):
+            for y in range(GN):
+                xpos = ul[0] + x*dx
+                ypos = ul[1] + y*dy
+                result.append([(xpos, ypos), (xpos+giw, ypos+giw)])
+
+        return result
+
 
     def apply_contrast(self):
         result = surface_to_image(self.background_surface_raw)
@@ -522,7 +601,7 @@ class App():
             self.alignment_box.crop_to_parent()
         self.crop_box.on_change.append(align_update)
 
-        self.mode = 'rotate'
+#        self.mode = 'rotate'
         self.grid_refs = None
         self.grid_control = GridControl(self.grid_image, self.alignment_box)
 
@@ -671,6 +750,16 @@ class App():
 
                 if self.crop_box.active:
                     self.crop_box.render(self.screen, (255,0,255))
+
+                grid_boxes = self.grid_control.get_boxes()
+
+                for ul, lr in grid_boxes:
+                    ul = self.alignment_box.to_screen(ul)
+                    lr = self.alignment_box.to_screen(lr)
+
+                    csize = [lr[x]-ul[x] for x in [0,1]]
+                    crect = pygame.Rect(ul, csize)
+                    pygame.gfxdraw.rectangle(self.screen, crect, (0,255,0))
 
                 self.alignment_box.render(self.screen, (0,255,0))
 
