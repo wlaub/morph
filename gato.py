@@ -293,7 +293,7 @@ class GridControl():
         self.gbw = gbw = cwidth/GN
         self.gbh = gbh = cheight/GN
 
-        self.giw = giw = 200
+        self.giw = giw = 100
         self.gih = gih = giw*gbh/gbw
 
         self.dx = dx = (csize[0]-giw)/(GN-1)
@@ -449,7 +449,7 @@ class GridControl():
             pygame.gfxdraw.filled_circle(screen, int(x), int(y), 7, color)
 
 
-    def compute_grid_params(self):
+    def compute_angles(self):
 
         def get_angle(a,b):
             dx = a[0]-b[0]
@@ -467,54 +467,25 @@ class GridControl():
             p,q = self.vrefs[i]
             vangles.append(get_angle(p,q))
 
+        return hangles, vangles
 
-        """
-        if self.grid_refs is not None:
+    def compute_grid_params(self):
+        l = (   self.vrefs[0][0][0]   +self.vrefs[0][1][0])/2
+        r = (self.vrefs[GN-1][0][0]+self.vrefs[GN-1][1][0])/2
+        t = (   self.hrefs[0][0][1]   +self.hrefs[0][1][1])/2
+        b = (self.hrefs[GN-1][0][1]+self.hrefs[GN-1][1][1])/2
 
-            va = []
-            ha = []
-            for i in range(GN):
-                t = self.grid_refs[(i,0)]
-                b = self.grid_refs[(i,GN-1)]
-                va.append(get_angle(t,b))
+        w = r-l
+        h = b-t
+        guess = 52.7
 
-                l = self.grid_refs[(0,i)]
-                r = self.grid_refs[(GN-1, i)]
-                ha.append(get_angle(l, r))
+        gx = round(w/guess)
+        gy = round(h/guess)
+        pixel_size = (w**2+h**2)**0.5
+        tile_size = (gx**2+gy**2)**0.5
+        grid_size = pixel_size/tile_size
 
-            text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
-
-            text = 'ha: '+ ', '.join(f'{x:0.3f}' for x in ha)
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
-
-            ul = self.grid_refs[(0,0)]
-            lr = self.grid_refs[(GN-1, GN-1)]
-            w = lr[0]-ul[0]
-            h = lr[1]-ul[1]
-            guess = 52.7
-            gx = round(w/guess)
-            gy = round(h/guess)
-            pixel_size = (w**2+h**2)**0.5
-            tile_size = (gx**2+gy**2)**0.5
-            grid_size = pixel_size/tile_size
-
-            text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}'
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
-
-            text = f'{gx=}, {gy=}, {grid_size=:0.2f}'
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
-        """
-
-
+        return pixel_size, tile_size, grid_size
 
 
 
@@ -595,50 +566,25 @@ class App():
             res -= round(res/90)*90
             return res
 
-        if self.grid_refs is not None:
+        ha, va = self.grid_control.compute_angles()
 
-            va = []
-            ha = []
-            for i in range(GN):
-                t = self.grid_refs[(i,0)]
-                b = self.grid_refs[(i,GN-1)]
-                va.append(get_angle(t,b))
+        text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
+        text = font.render(text, True, color)
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
 
-                l = self.grid_refs[(0,i)]
-                r = self.grid_refs[(GN-1, i)]
-                ha.append(get_angle(l, r))
+        text = 'ha: '+ ', '.join(f'{x:0.3f}' for x in ha)
+        text = font.render(text, True, color)
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
 
-            text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
 
-            text = 'ha: '+ ', '.join(f'{x:0.3f}' for x in ha)
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
+        pixel_size, tile_size, grid_size = self.grid_control.compute_grid_params()
 
-            ul = self.grid_refs[(0,0)]
-            lr = self.grid_refs[(GN-1, GN-1)]
-            w = lr[0]-ul[0]
-            h = lr[1]-ul[1]
-            guess = 52.7
-            gx = round(w/guess)
-            gy = round(h/guess)
-            pixel_size = (w**2+h**2)**0.5
-            tile_size = (gx**2+gy**2)**0.5
-            grid_size = pixel_size/tile_size
-
-            text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}'
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
-
-            text = f'{gx=}, {gy=}, {grid_size=:0.2f}'
-            text = font.render(text, True, color)
-            self.screen.blit(text, (xpos, ypos))
-            ypos += text.get_height()
-
+        text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}, {grid_size=:0.2f}'
+        text = font.render(text, True, color)
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
 
 
 
