@@ -1,6 +1,7 @@
 import os
 import time
 import math
+import json
 from collections import defaultdict
 
 import tabulate
@@ -15,6 +16,9 @@ import pygame
 import pygame.gfxdraw
 import pygame.transform
 from pygame.locals import *
+
+import crossfiledialog as cfd
+import platformdirs
 
 LMB = 1
 MMB = 2
@@ -41,11 +45,48 @@ def surface_to_image(surface):
         pygame.image.tobytes(surface, "RGB", False)
         )
 
+class AppConfig:
+    def __init__(self):
+        self.config_dir = platformdirs.user_data_dir('gato')
+        self.config_file = os.path.join(self.config_dir, 'state.json')
+
+        self.config = {}
+        if os.path.exists(self.config_file):
+            with open(self.config_file, 'r') as fp:
+                self.config = json.load(fp)
+
+    def save(self):
+        os.makedirs(self.config_dir, exist_ok = True)
+        with open(self.config_file, 'w') as fp:
+            json.dump(self.config, fp)
+
+app_config = AppConfig()
+
+def memory_select(callback, **kwargs):
+    kwargs['start_dir'] = app_config.config.get('start_dir', os.path.expanduser('~'))
+    result = callback(**kwargs)
+
+    if result == '' or result is None:
+        return None
+
+    if not isinstance(result, str):
+        ref = result[0]
+    else:
+        ref = result
+
+    app_config.config['start_dir'] = os.path.dirname(result)
+    app_config.save()
+
+    return result
+
+
 class CropBox():
-    def __init__(self, base_image, ul = None, lr = None):
+    def __init__(self, base_image, data = None):
         self.base_image = base_image
-        self.ul = ul or (0,0)
-        self.lr = lr or base_image.size
+
+        if data is None: data = {}
+        self.ul = data['ul'] or (0,0)
+        self.lr = data['lr'] or base_image.size
         self.update_params()
 
         self.active = False
@@ -57,6 +98,9 @@ class CropBox():
         self.parent = None
 
         self.on_change = []
+
+    def to_json(self):
+        return {'ul': self.ul, 'lr': self.lr}
 
     def crop_to_box(self, other):
         self.ul = list(self.ul)
@@ -224,7 +268,7 @@ def intersect(p, q, r, s):
     return x,y
 
 class GridControl():
-    def __init__(self, base_image, alignment_box):
+    def __init__(self, base_image, alignment_box, data = None):
         self.base_image = base_image
         self.alignment_box = alignment_box
 
@@ -233,16 +277,47 @@ class GridControl():
         self.sel_ref = None
 
         self.compute_params()
-        self.init_refs()
+        if data is None:
+            self.init_refs()
+            self.grayscale = 1
+            self.contrast = 1
+            self.brightness = 1
+            self.sharpness = 1
+        else:
+            self.load(data)
 
-
-        self.grayscale = 1
-        self.contrast = 1
-        self.brightness = 1
-        self.sharpness = 1
 
         self.background_surface_raw = self.render_base()
         self.background_surface = self.apply_contrast()
+
+    def fix_refs(self, data):
+        for key in list(data.keys()):
+            data[int(key)] = data.pop(key)
+        return data
+
+    def load(self, data):
+        self.vrefs = self.fix_refs(data['vrefs'])
+        self.hrefs = self.fix_refs(data['hrefs'])
+        self.grayscale = data['color']['grayscale']
+        self.contrast = data['color']['contrast']
+        self.brightness = data['color']['brightness']
+        self.sharpness = data['color']['sharpness']
+
+    def to_json(self):
+        result = {
+            'vrefs': self.vrefs,
+            'hrefs': self.hrefs,
+            'color': {
+                'grayscale': self.grayscale,
+                'contrast': self.contrast,
+                'brightness': self.brightness,
+                'sharpness': self.sharpness,
+                }
+            #TODO add grid params?
+            }
+
+        return result
+
 
     def do_contrast(self, x):
         self.contrast += x/10
@@ -453,9 +528,9 @@ class GridControl():
 
 
     def finish(self, mpos):
-        if not self.active: return
+        if not self.active: return False
         self.active = False
-
+        return True
 
     def render(self, screen):
         screen.blit(self.background_surface, (0,0))
@@ -570,44 +645,95 @@ class GridControl():
 
 class App():
     def __init__(self, screen):
-        self.cal_dir = 'calibrations'
 
-        self.project_dir = 'rect_test' #FIXME
+
+        self.cal_dir = 'calibrations'
         self.cal_config = os.path.join(self.cal_dir, 'slot_9.txt') #FIXME
 
+        self.project_dir = app_config.config.get('current_project')
+
+        if self.project_dir is None:
+            self.prompt_load()
+        else:
+            self.load()
+
+    def prompt_load(self):
+        project_dir = memory_select(cfd.choose_folder)
+        if project_dir is not None:
+            self.project_dir = project_dir
+            app_config.config['current_project'] = self.project_dir
+            app_config.save()
+            self.load()
+
+    def load(self):
+        self.project_file = os.path.join(self.project_dir, 'gato.json')
+
+        config = {}
+        self.dirty = True
+        if os.path.exists(self.project_file):
+            with open(self.project_file, 'r') as fp:
+                config = json.load(fp)
+                self.dirty = False
+
+        self.mode = config.get('mode', 'crop')
+
         self.screen = screen
+
+        self.cache_dir = os.path.join(self.project_dir, 'gato_cache')
 
         self.raw_dir = os.path.join(self.project_dir, 'raw_inputs')
         self.raw_images = [x for x in os.listdir(self.raw_dir) if x.endswith('.jpg')]
 
+        if len(self.raw_images) == 0:
+            raise RuntimeError('Not a valid project dir - no raw_images')
+
+        os.makedirs(self.cache_dir, exist_ok = True)
+
         self.morpher = morph.MorphProject(self.cal_config)
 
-        self.grid_file = os.path.join(self.raw_dir, 'grid.jpg')
-        self.grid_image = Image.open(self.grid_file)
-        self.grid_image = self.morpher.lens_correct(self.grid_image)
+        grid_cache = os.path.join(self.cache_dir, 'grid.png')
+        if os.path.exists(grid_cache):
+            self.grid_image = Image.open(grid_cache)
+        else:
+            self.grid_file = os.path.join(self.raw_dir, 'grid.jpg')
+            self.grid_image = Image.open(self.grid_file)
+            self.grid_image = self.morpher.lens_correct(self.grid_image)
+            self.grid_image.save(grid_cache)
+
+
         self.grid_surface = image_to_surface(self.grid_image)
 
+        #Crop Controls
 
-        self.mode = 'crop'
-#        self.crop_box = CropBox(self.grid_image)
-        self.crop_box = CropBox(self.grid_image, (554.69,599.18), (2312.35,2895.41))#FIXME
+        self.crop_box = CropBox(self.grid_image, config.get('crop_box'))
         self.crop_surface = self.crop_box.get_cropped_surface()
 
-#        self.alignment_box = CropBox(self.grid_image)
-        self.alignment_box = CropBox(self.grid_image, (621.28,654.29), (2233.23,2812.75))
+        self.alignment_box = CropBox(self.grid_image, config.get('alignment_box'))
         self.alignment_box.set_parent(self.crop_box)
 
         def align_update():
             self.alignment_box.crop_to_parent()
         self.crop_box.on_change.append(align_update)
 
-#        self.mode = 'rotate'
+        #Grid Controls
+
         self.grid_refs = None
-        self.grid_control = GridControl(self.grid_image, self.alignment_box)
+        self.grid_control = GridControl(self.grid_image, self.alignment_box, config.get('rotation_grid'))
 
         def grid_align_update():
             self.grid_control.compute_params()
         self.alignment_box.on_change.append(grid_align_update)
+
+    def save(self):
+        data = {
+            'mode': self.mode,
+            'crop_box': self.crop_box.to_json(),
+            'alignment_box': self.alignment_box.to_json(),
+            'rotation_grid': self.grid_control.to_json(),
+            }
+        with open(self.project_file, 'w') as fp:
+            json.dump(data, fp, indent = 2)
+        self.dirty = False
 
     def render_config(self):
         xpos = cwidth+10
@@ -670,6 +796,7 @@ class App():
     def run(self):
         cropping = False
         grid_target = (0,0)
+        self.dirty = False
         while True:
             mpos = pygame.mouse.get_pos()
             keys = pygame.key.get_pressed()
@@ -685,8 +812,8 @@ class App():
                         if event.button == MMB:
                             pass
                         elif event.button == LMB:
-                            self.grid_control.finish(mpos)
-                            pass
+                            if self.grid_control.finish(mpos):
+                                self.dirty = True
                         elif event.button == RMB:
                             pass
                     elif event.type == MOUSEBUTTONDOWN:
@@ -699,22 +826,22 @@ class App():
                     elif event.type == KEYDOWN:
                         if event.mod & KMOD_CTRL:
                             if event.key == K_UP:
-                                self.grid_control.do_grayscale(1)
+                                self.grid_control.do_grayscale(1); self.dirty=True
                             elif event.key == K_DOWN:
-                                self.grid_control.do_grayscale(-1)
+                                self.grid_control.do_grayscale(-1); self.dirty=True
                             elif event.key == K_LEFT:
-                                self.grid_control.do_sharpness(-1)
+                                self.grid_control.do_sharpness(-1); self.dirty=True
                             elif event.key == K_RIGHT:
-                                self.grid_control.do_sharpness(1)
+                                self.grid_control.do_sharpness(1); self.dirty=True
                         else:
                             if event.key == K_UP:
-                                self.grid_control.do_contrast(1)
+                                self.grid_control.do_contrast(1); self.dirty=True
                             elif event.key == K_DOWN:
-                                self.grid_control.do_contrast(-1)
+                                self.grid_control.do_contrast(-1); self.dirty=True
                             elif event.key == K_LEFT:
-                                self.grid_control.do_brightness(-1)
+                                self.grid_control.do_brightness(-1); self.dirty=True
                             elif event.key == K_RIGHT:
-                                self.grid_control.do_brightness(1)
+                                self.grid_control.do_brightness(1); self.dirty=True
 
                 self.grid_control.update(mpos)
                 self.grid_control.render(screen)
@@ -728,10 +855,12 @@ class App():
                         exit()
                     elif event.type == MOUSEBUTTONUP:
                         if event.button == MMB:
-                            self.alignment_box.finish(mpos)
+                            if self.alignment_box.finish(mpos):
+                                self.dirty = True
                         elif event.button == LMB:
                             if self.crop_box.finish(mpos):
                                 self.crop_surface = self.crop_box.get_cropped_surface()
+                                self.dirty = True
                         elif event.button == RMB:
                             self.crop_box.abort()
                             self.alignment_box.abort()
@@ -767,6 +896,9 @@ class App():
 
             pygame.display.update()
             time.sleep(0.05)
+
+            if self.dirty:
+                self.save()
 
 
 app = App(screen)
