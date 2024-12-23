@@ -725,7 +725,6 @@ class App():
 
         #Grid Controls
 
-        self.grid_refs = None
         self.grid_control = GridControl(self.grid_image, self.alignment_box, config.get('rotation_grid'))
 
         self.angle = config.get('angle', 0)
@@ -767,6 +766,12 @@ class App():
 
         #Final Grid
 
+        self.alignment_grid_control = GridControl(self.rotated_grid_image, self.final_alignment_box, config.get('alignment_grid'))
+
+        def align_grid_align_update():
+            self.alignment_grid_control.compute_params()
+        self.final_alignment_box.on_change.append(align_grid_align_update)
+
     def save(self):
         data = {
             'mode': self.mode,
@@ -776,6 +781,7 @@ class App():
             'rotation_grid': self.grid_control.to_json(),
             'final_crop_box': self.final_crop_box.to_json(),
             'final_alignment_box': self.final_alignment_box.to_json(),
+            'alignment_grid': self.alignment_grid_control.to_json()
             }
         with open(self.project_file, 'w') as fp:
             json.dump(data, fp, indent = 2)
@@ -790,51 +796,70 @@ class App():
         ypos = 10
         color = (255,255,255)
 
-        text = f'Crop Box: {self.crop_box}'
-        text = font.render(text, True, color)
-
-        self.screen.blit(text, (xpos, ypos))
-        ypos += text.get_height()
-
-
-        text = f'Alignment Box: {self.alignment_box}'
-        text = font.render(text, True, color)
-
-        self.screen.blit(text, (xpos, ypos))
-        ypos += text.get_height()
-
-
-        ypos += 10
-
-        text = f'Gray: {self.grid_control.grayscale:0.2f}, Bright: {self.grid_control.brightness:0.2f}, Constrast: {self.grid_control.contrast:0.2f}, Sharp {self.grid_control.sharpness:0.2f}'
-        text = font.render(text, True, color)
-        self.screen.blit(text, (xpos, ypos))
-        ypos += text.get_height()
-
-        ypos += 10
-
+        #TODO make this somewhere else
         ha, va = self.grid_control.compute_angles()
-
         self.angle = sum(va)/len(va)
 
-        text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
-        text = font.render(text, True, color)
+        text = font.render(f'Mode: {self.mode}', True, color)
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
 
-        text = 'ha: '+ ', '.join(f'{x:0.3f}' for x in ha)
-        text = font.render(text, True, color)
-        self.screen.blit(text, (xpos, ypos))
-        ypos += text.get_height()
+        ypos += 10
+
+        for header, cb, ab, gc in [
+            ('Rotation', self.crop_box, self.alignment_box, self.grid_control),
+            ('Alignment', self.final_crop_box, self.final_alignment_box, self.alignment_grid_control)
+            ]:
+
+            text = font.render(header, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+            ypos += 10
+
+            text = f'Crop Box: {cb}'
+            text = font.render(text, True, color)
+
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
 
 
-        pixel_size, tile_size, grid_size = self.grid_control.compute_grid_params()
+            text = f'Alignment Box: {ab}'
+            text = font.render(text, True, color)
 
-        text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}, {grid_size=:0.2f}'
-        text = font.render(text, True, color)
-        self.screen.blit(text, (xpos, ypos))
-        ypos += text.get_height()
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
 
+            ypos += 10
+
+
+            text = f'Gray: {gc.grayscale:0.2f}, Bright: {gc.brightness:0.2f}, Constrast: {gc.contrast:0.2f}, Sharp {gc.sharpness:0.2f}'
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+            ypos += 10
+
+            ha, va = gc.compute_angles()
+
+            text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+            text = 'ha: '+ ', '.join(f'{x:0.3f}' for x in ha)
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+
+            pixel_size, tile_size, grid_size = gc.compute_grid_params()
+
+            text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}, {grid_size=:0.2f}'
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+            ypos += 20
 
 
     def run(self):
@@ -896,6 +921,46 @@ class App():
 
                 self.grid_control.update(mpos)
                 self.grid_control.render(screen)
+            elif self.mode == 'align':
+                for event in events:
+                    if event.type == MOUSEBUTTONUP:
+                        if event.button == MMB:
+                            pass
+                        elif event.button == LMB:
+                            if self.alignment_grid_control.finish(mpos):
+                                self.dirty = True
+                        elif event.button == RMB:
+                            pass
+                    elif event.type == MOUSEBUTTONDOWN:
+                        if event.button == MMB:
+                            pass
+                        elif event.button == LMB:
+                            self.alignment_grid_control.activate(mpos)
+                    elif event.type == MOUSEWHEEL:
+                        pass
+                    elif event.type == KEYDOWN:
+                        if event.mod & KMOD_CTRL:
+                            if event.key == K_UP:
+                                self.alignment_grid_control.do_grayscale(1); self.dirty=True
+                            elif event.key == K_DOWN:
+                                self.alignment_grid_control.do_grayscale(-1); self.dirty=True
+                            elif event.key == K_LEFT:
+                                self.alignment_grid_control.do_sharpness(-1); self.dirty=True
+                            elif event.key == K_RIGHT:
+                                self.alignment_grid_control.do_sharpness(1); self.dirty=True
+                        else:
+                            if event.key == K_UP:
+                                self.alignment_grid_control.do_contrast(1); self.dirty=True
+                            elif event.key == K_DOWN:
+                                self.alignment_grid_control.do_contrast(-1); self.dirty=True
+                            elif event.key == K_LEFT:
+                                self.alignment_grid_control.do_brightness(-1); self.dirty=True
+                            elif event.key == K_RIGHT:
+                                self.alignment_grid_control.do_brightness(1); self.dirty=True
+
+                self.alignment_grid_control.update(mpos)
+                self.alignment_grid_control.render(screen)
+
             elif self.mode == 'crop':
                 for event in events:
                     if event.type == MOUSEBUTTONUP:
@@ -963,9 +1028,7 @@ class App():
 
                 self.final_crop_box.render(self.screen, (255,0,255))
 
-                #TODO
-                """
-                grid_boxes = self.grid_control.get_boxes()
+                grid_boxes = self.alignment_grid_control.get_boxes()
 
                 for ul, lr in grid_boxes:
                     ul = self.final_alignment_box.to_screen(ul)
@@ -974,7 +1037,6 @@ class App():
                     csize = [lr[x]-ul[x] for x in [0,1]]
                     crect = pygame.Rect(ul, csize)
                     pygame.gfxdraw.rectangle(self.screen, crect, (0,255,0))
-                """
 
                 self.final_alignment_box.render(self.screen, (0,255,0))
 
