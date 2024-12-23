@@ -20,6 +20,15 @@ from pygame.locals import *
 import crossfiledialog as cfd
 import platformdirs
 
+#TODO
+"""
+Mode switching controls
+Open project control
+Final grid alignment mode
+Export images
+Save grid params
+"""
+
 LMB = 1
 MMB = 2
 RMB = 3
@@ -85,8 +94,8 @@ class CropBox():
         self.base_image = base_image
 
         if data is None: data = {}
-        self.ul = data['ul'] or (0,0)
-        self.lr = data['lr'] or base_image.size
+        self.ul = data.get('ul') or (0,0)
+        self.lr = data.get('lr') or base_image.size
         self.update_params()
 
         self.active = False
@@ -646,7 +655,6 @@ class GridControl():
 class App():
     def __init__(self, screen):
 
-
         self.cal_dir = 'calibrations'
         self.cal_config = os.path.join(self.cal_dir, 'slot_9.txt') #FIXME
 
@@ -720,20 +728,62 @@ class App():
         self.grid_refs = None
         self.grid_control = GridControl(self.grid_image, self.alignment_box, config.get('rotation_grid'))
 
+        self.angle = config.get('angle', 0)
+
         def grid_align_update():
             self.grid_control.compute_params()
         self.alignment_box.on_change.append(grid_align_update)
 
+        #Final Crop
+
+        self.rotated_grid_image = self.grid_image.rotate(self.angle)
+
+        self.cheat_box = CropBox(self.rotated_grid_image, None)
+        self.rotated_grid_surface = self.cheat_box.get_cropped_surface()
+
+
+        self.final_crop_box = CropBox(self.rotated_grid_image, config.get('final_crop_box'))
+        self.final_crop_surface = self.final_crop_box.get_cropped_surface()
+        self.final_crop_box.set_parent(self.cheat_box)
+
+        self.final_alignment_box = CropBox(self.rotated_grid_image, config.get('final_alignment_box'))
+        self.final_alignment_box.set_parent(self.final_crop_box)
+
+        def cheat_update():
+            ul = self.final_crop_box.ul
+            lr = self.final_crop_box.lr
+            w,h = self.cheat_box.base_image.size
+            s = 50
+            nul = (max(ul[0] - s,0), max(ul[1] - s,0))
+            nlr = (min(lr[0] + s,w), min(lr[1] + s,h))
+            self.cheat_box.ul = nul
+            self.cheat_box.lr = nlr
+            self.cheat_box.update_params()
+            self.rotated_grid_surface = self.cheat_box.get_cropped_surface()
+        cheat_update()
+
+        self.final_crop_box.on_change.append(lambda: self.final_alignment_box.crop_to_parent())
+        self.final_crop_box.on_change.append(cheat_update)
+
+        #Final Grid
+
     def save(self):
         data = {
             'mode': self.mode,
+            'angle': self.angle,
             'crop_box': self.crop_box.to_json(),
             'alignment_box': self.alignment_box.to_json(),
             'rotation_grid': self.grid_control.to_json(),
+            'final_crop_box': self.final_crop_box.to_json(),
+            'final_alignment_box': self.final_alignment_box.to_json(),
             }
         with open(self.project_file, 'w') as fp:
             json.dump(data, fp, indent = 2)
         self.dirty = False
+
+    def update_aligned_image(self):
+        self.rotated_grid_image = self.grid_image.rotate(self.angle)
+        pass
 
     def render_config(self):
         xpos = cwidth+10
@@ -763,15 +813,9 @@ class App():
 
         ypos += 10
 
-
-        def get_angle(a,b):
-            dx = a[0]-b[0]
-            dy = a[1]-b[1]
-            res = math.atan2(dy, dx)*180/math.pi
-            res -= round(res/90)*90
-            return res
-
         ha, va = self.grid_control.compute_angles()
+
+        self.angle = sum(va)/len(va)
 
         text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
         text = font.render(text, True, color)
@@ -802,13 +846,20 @@ class App():
             keys = pygame.key.get_pressed()
 
             self.screen.fill((32,32,32))
+            events = []
+            for event in pygame.event.get():
+                events.append(event)
+                if event.type == QUIT:
+                    pygame.quit()
+                    exit()
+                elif event.type == KEYDOWN:
+                    if event.mod & KMOD_CTRL:
+                        if event.key == K_o:
+                            self.prompt_load()
 
             if self.mode == 'rotate':
-                for event in pygame.event.get():
-                    if event.type == QUIT:
-                        pygame.quit()
-                        exit()
-                    elif event.type == MOUSEBUTTONUP:
+                for event in events:
+                    if event.type == MOUSEBUTTONUP:
                         if event.button == MMB:
                             pass
                         elif event.button == LMB:
@@ -845,15 +896,9 @@ class App():
 
                 self.grid_control.update(mpos)
                 self.grid_control.render(screen)
-
-
-
-            if self.mode == 'crop':
-                for event in pygame.event.get():
-                    if event.type == QUIT:
-                        pygame.quit()
-                        exit()
-                    elif event.type == MOUSEBUTTONUP:
+            elif self.mode == 'crop':
+                for event in events:
+                    if event.type == MOUSEBUTTONUP:
                         if event.button == MMB:
                             if self.alignment_box.finish(mpos):
                                 self.dirty = True
@@ -891,6 +936,48 @@ class App():
                     pygame.gfxdraw.rectangle(self.screen, crect, (0,255,0))
 
                 self.alignment_box.render(self.screen, (0,255,0))
+            elif self.mode == 'final_crop':
+                for event in events:
+                    if event.type == MOUSEBUTTONUP:
+                        if event.button == MMB:
+                            if self.final_alignment_box.finish(mpos):
+                                self.dirty = True
+                        elif event.button == LMB:
+                            if self.final_crop_box.finish(mpos):
+                                self.dirty = True
+                        elif event.button == RMB:
+                            self.final_crop_box.abort()
+                            self.final_alignment_box.abort()
+                    elif event.type == MOUSEBUTTONDOWN:
+                        if event.button == MMB:
+                            self.final_alignment_box.activate(mpos)
+                        elif event.button == LMB:
+                            self.final_crop_box.activate(mpos)
+                    elif event.type == MOUSEWHEEL:
+                        pass
+
+                self.final_crop_box.update(mpos)
+                self.final_alignment_box.update(mpos)
+
+                self.screen.blit(self.rotated_grid_surface, (0,0))
+
+                self.final_crop_box.render(self.screen, (255,0,255))
+
+                #TODO
+                """
+                grid_boxes = self.grid_control.get_boxes()
+
+                for ul, lr in grid_boxes:
+                    ul = self.final_alignment_box.to_screen(ul)
+                    lr = self.final_alignment_box.to_screen(lr)
+
+                    csize = [lr[x]-ul[x] for x in [0,1]]
+                    crect = pygame.Rect(ul, csize)
+                    pygame.gfxdraw.rectangle(self.screen, crect, (0,255,0))
+                """
+
+                self.final_alignment_box.render(self.screen, (0,255,0))
+
 
             self.render_config()
 
