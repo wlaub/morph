@@ -87,8 +87,9 @@ def memory_select(callback, **kwargs):
 
 
 class CropBox():
-    def __init__(self, base_image, data = None):
+    def __init__(self, base_image, int_corners = True, data = None):
         self.base_image = base_image
+        self.int_corners = int_corners
 
         if data is None: data = {}
         self.ul = data.get('ul') or (0,0)
@@ -223,7 +224,10 @@ class CropBox():
         r = max(ul[0], lr[0])
         t = min(ul[1], lr[1])
         b = max(ul[1], lr[1])
-        return (l, t), (r, b)
+        if self.int_corners:
+            return (round(l), round(t)), (round(r), round(b))
+        else:
+            return (l,t),(r,b)
 
     def apply_changes(self):
         if not self.active: return
@@ -735,10 +739,10 @@ class App():
 
         #Crop Controls
 
-        self.crop_box = CropBox(self.grid_image, config.get('crop_box'))
+        self.crop_box = CropBox(self.grid_image, True, config.get('crop_box'))
         self.crop_surface = self.crop_box.get_cropped_surface()
 
-        self.alignment_box = CropBox(self.grid_image, config.get('alignment_box'))
+        self.alignment_box = CropBox(self.grid_image, False, config.get('alignment_box'))
         self.alignment_box.set_parent(self.crop_box)
 
         def align_update():
@@ -763,11 +767,11 @@ class App():
         self.rotated_grid_surface = self.cheat_box.get_cropped_surface()
 
 
-        self.final_crop_box = CropBox(self.rotated_grid_image, config.get('final_crop_box'))
+        self.final_crop_box = CropBox(self.rotated_grid_image, True, config.get('final_crop_box'))
         self.final_crop_surface = self.final_crop_box.get_cropped_surface()
         self.final_crop_box.set_parent(self.cheat_box)
 
-        self.final_alignment_box = CropBox(self.rotated_grid_image, config.get('final_alignment_box'))
+        self.final_alignment_box = CropBox(self.rotated_grid_image, False, config.get('final_alignment_box'))
         self.final_alignment_box.set_parent(self.final_crop_box)
 
         def cheat_update():
