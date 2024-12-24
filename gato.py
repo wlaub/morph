@@ -24,7 +24,6 @@ import platformdirs
 """
 Angle selection controls
 Export images
-Save grid params
 """
 
 LMB = 1
@@ -279,7 +278,8 @@ def intersect(p, q, r, s):
     return x,y
 
 class GridControl():
-    def __init__(self, base_image, alignment_box, data = None):
+    def __init__(self, base_image, alignment_box, crop_box, data = None):
+        self.crop_box = crop_box
         self.base_image = base_image
         self.alignment_box = alignment_box
 
@@ -320,6 +320,7 @@ class GridControl():
         self.sharpness = data['color']['sharpness']
 
     def to_json(self):
+        pixel_size, tile_size, grid_size = self.compute_grid_params()
         result = {
             'vrefs': self.vrefs,
             'hrefs': self.hrefs,
@@ -328,12 +329,15 @@ class GridControl():
                 'contrast': self.contrast,
                 'brightness': self.brightness,
                 'sharpness': self.sharpness,
-                }
-            #TODO add grid params?
+                },
+            'grid': {
+                'refs': self.compute_grid_points(),
+                'pixel_size': pixel_size,
+                'tile_size': tile_size,
+                },
             }
 
         return result
-
 
     def do_contrast(self, x):
         self.contrast += x/10
@@ -441,7 +445,6 @@ class GridControl():
         giw = self.giw; gih = self.gih
         dx = self.dx; dy = self.dy
 
-        #TODO load from file
         self.vrefs = {}
         self.hrefs = {}
         for x in range(GN):
@@ -639,6 +642,18 @@ class GridControl():
 
         return hangles, vangles
 
+    def compute_grid_points(self, ):
+        result = []
+        ul = self.crop_box.ul
+        for i in range(GN):
+            p, q = self.hrefs[i]
+            for j in range(GN):
+                r,s = self.vrefs[i]
+                a = intersect(p,q,r,s)
+                a = (a[0]-ul[0], a[0]-ul[1])
+                result.append(a)
+        return result
+
     def compute_grid_params(self):
         l = (   self.vrefs[0][0][0]   +self.vrefs[0][1][0])/2
         r = (self.vrefs[GN-1][0][0]+self.vrefs[GN-1][1][0])/2
@@ -732,7 +747,7 @@ class App():
 
         #Grid Controls
 
-        self.grid_control = GridControl(self.grid_image, self.alignment_box, config.get('rotation_grid'))
+        self.grid_control = GridControl(self.grid_image, self.alignment_box, self.crop_box, config.get('rotation_grid'))
 
         self.angle = config.get('angle', 0)
 
@@ -773,7 +788,7 @@ class App():
 
         #Final Grid
 
-        self.alignment_grid_control = GridControl(self.rotated_grid_image, self.final_alignment_box, config.get('alignment_grid'))
+        self.alignment_grid_control = GridControl(self.rotated_grid_image, self.final_alignment_box, self.final_crop_box, config.get('alignment_grid'))
 
         def align_grid_align_update():
             self.alignment_grid_control.compute_params()
