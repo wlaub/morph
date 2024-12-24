@@ -620,13 +620,22 @@ class GridControl():
                 x2, y2 = cmap((x,y), j,i)
 
                 pygame.gfxdraw.line(screen,
-                    int(x1), int(y1), int(x2), int(y2),
+                    round(x1), round(y1), round(x2), round(y2),
                     color)
 
             x,y = cmap(p, 0, i)
-            pygame.gfxdraw.filled_circle(screen, int(x), int(y), 7, color)
+            pygame.gfxdraw.filled_circle(screen, round(x), round(y), 7, color)
             x,y = cmap(q, GN-1, i)
-            pygame.gfxdraw.filled_circle(screen, int(x), int(y), 7, color)
+            pygame.gfxdraw.filled_circle(screen, round(x), round(y), 7, color)
+
+    def render_crop_mode(self, screen, ref_box):
+        color = (255,0,255)
+        for i in range(GN):
+            p,q = [ref_box.to_screen(x) for x in self.vrefs[i]]
+            r,s = [ref_box.to_screen(x) for x in self.hrefs[i]]
+            for x,y in [p,q,r,s]:
+                pygame.gfxdraw.filled_circle(screen, round(x),round(y), 3, color)
+
 
 
     def compute_angles(self):
@@ -1155,6 +1164,8 @@ class App():
                 if self.crop_box.active:
                     self.crop_box.render(self.screen, (255,0,255))
 
+                self.grid_control.render_crop_mode(self.screen, self.crop_box)
+
                 grid_boxes = self.grid_control.get_boxes()
 
                 for ul, lr in grid_boxes:
@@ -1193,6 +1204,8 @@ class App():
                 self.screen.blit(self.rotated_grid_surface, (0,0))
 
                 self.final_crop_box.render(self.screen, (255,0,255))
+
+                self.alignment_grid_control.render_crop_mode(self.screen, self.cheat_box)
 
                 grid_boxes = self.alignment_grid_control.get_boxes()
 
