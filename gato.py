@@ -23,7 +23,6 @@ from pygame.locals import *
 
 #TODO
 """
-Export images
 """
 
 LMB = 1
@@ -783,6 +782,8 @@ class App():
         self.raw_dir = os.path.join(self.project_dir, 'raw_inputs')
         self.raw_images = [x for x in os.listdir(self.raw_dir) if x.endswith('.jpg')]
 
+        self.output_dir = os.path.join(self.project_dir, 'inputs')
+
         if len(self.raw_images) == 0:
             raise RuntimeError('Not a valid project dir - no raw_images')
 
@@ -865,6 +866,46 @@ class App():
         def align_grid_align_update():
             self.alignment_grid_control.compute_params()
         self.final_alignment_box.on_change.append(align_grid_align_update)
+
+    def export(self):
+        os.makedirs(self.output_dir, exist_ok = True)
+        base_surface = self.screen.copy()
+        pygame.gfxdraw.box(base_surface, pygame.Rect(0,0,*base_surface.get_size()), (0,0,0,128))
+        for idx, infile in enumerate(self.raw_images):
+            inpath = os.path.join(self.raw_dir, infile)
+            outfile = '.'.join(infile.split('.')[:-1]) + '.png'
+            outpath = os.path.join(self.output_dir, outfile)
+
+            self.screen.blit(base_surface, (0,0))
+
+            text = font.render(f'{idx+1}/{len(self.raw_images)}  Exporting {outfile}', True, (255,255,255))
+            w,h = self.screen.get_size()
+            tw, th = text.get_size()
+            xpos = w/2-tw/2
+            ypos = h/2-th/2
+            s = 20
+
+            self.screen.fill((0,0,0), pygame.Rect(xpos-s, ypos-s, tw+s*2, th+s*2))
+
+            self.screen.blit(text, (xpos, ypos))
+            pygame.display.update()
+
+
+            bbox = self.final_crop_box.get_bbox()
+
+            image = Image.open(inpath)
+            image = self.morpher.lens_correct(image)
+            image = image.rotate(self.angle)
+            image = image.crop(bbox)
+            image.save(outpath)
+
+            stop = False
+            for event in pygame.event.get():
+                 if event.type == KEYDOWN:
+                    if event.key == K_ESCAPE:
+                        stop = True
+            if stop: break
+
 
     def save(self):
         data = {
@@ -1022,7 +1063,6 @@ class App():
             mpos = pygame.mouse.get_pos()
             keys = pygame.key.get_pressed()
 
-            self.screen.fill((32,32,32))
             events = []
             for event in pygame.event.get():
                 events.append(event)
@@ -1033,13 +1073,15 @@ class App():
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
                             self.prompt_load()
-                        elif event.key == K_r:
+                        elif event.key == K_r and (event.mode & KMOD_SHIFT):
                             if self.mode == 'rotate':
                                 self.grid_control.init_refs()
                             elif self.mode == 'align':
                                 self.alignment_grid_control.init_refs()
                         elif event.key == K_a:
                             self.start_angle_selection()
+                        elif event.key == K_e:
+                            self.export()
                     else:
                         if event.key == K_1:
                             self.mode = 'crop'
@@ -1052,6 +1094,8 @@ class App():
                         elif event.key == K_4:
                             self.mode = 'align'
                             self.update_aligned_image()
+
+            self.screen.fill((32,32,32))
 
             if self.mode == 'rotate':
                 if self.selection_box is None:
