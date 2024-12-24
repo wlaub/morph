@@ -816,6 +816,11 @@ class App():
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
 
+        text = font.render(f'Angle: {self.angle}', True, color)
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
+
+
         ypos += 10
 
         for header, cb, ab, gc in [
@@ -893,6 +898,11 @@ class App():
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
                             self.prompt_load()
+                        if event.key == K_r:
+                            if self.mode == 'rotate':
+                                self.grid_control.init_refs()
+                            elif self.mode == 'align':
+                                self.alignment_grid_control.init_refs()
                     else:
                         if event.key == K_1:
                             self.mode = 'crop'
