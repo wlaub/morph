@@ -22,9 +22,7 @@ import platformdirs
 
 #TODO
 """
-Mode switching controls
-Open project control
-Final grid alignment mode
+Angle selection controls
 Export images
 Save grid params
 """
@@ -107,6 +105,10 @@ class CropBox():
         self.parent = None
 
         self.on_change = []
+
+    def update_image(self, base_image):
+        self.base_image = base_image
+        self.update_params()
 
     def to_json(self):
         return {'ul': self.ul, 'lr': self.lr}
@@ -296,6 +298,11 @@ class GridControl():
             self.load(data)
 
 
+        self.update_image()
+
+    def update_image(self, base_image = None):
+        if base_image is not None:
+            self.base_image = base_image
         self.background_surface_raw = self.render_base()
         self.background_surface = self.apply_contrast()
 
@@ -787,18 +794,23 @@ class App():
             json.dump(data, fp, indent = 2)
         self.dirty = False
 
+    def update_alignment_angle(self):
+        #TODO this might need a way to select from different values
+        ha, va = self.grid_control.compute_angles()
+        self.angle = sum(va)/len(va)
+
     def update_aligned_image(self):
+        self.update_alignment_angle()
         self.rotated_grid_image = self.grid_image.rotate(self.angle)
-        pass
+        self.final_crop_box.update_image(self.rotated_grid_image)
+        self.final_alignment_box.update_image(self.rotated_grid_image)
+        self.alignment_grid_control.update_image(self.rotated_grid_image)
 
     def render_config(self):
         xpos = cwidth+10
         ypos = 10
         color = (255,255,255)
 
-        #TODO make this somewhere else
-        ha, va = self.grid_control.compute_angles()
-        self.angle = sum(va)/len(va)
 
         text = font.render(f'Mode: {self.mode}', True, color)
         self.screen.blit(text, (xpos, ypos))
@@ -881,6 +893,18 @@ class App():
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
                             self.prompt_load()
+                    else:
+                        if event.key == K_1:
+                            self.mode = 'crop'
+                        elif event.key == K_2:
+                            self.mode = 'rotate'
+                            self.grid_control.update_image()
+                        elif event.key == K_3:
+                            self.mode = 'final_crop'
+                            self.update_aligned_image()
+                        elif event.key == K_4:
+                            self.mode = 'align'
+                            self.update_aligned_image()
 
             if self.mode == 'rotate':
                 for event in events:
