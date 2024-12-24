@@ -9,6 +9,10 @@ import tabulate
 from gimpformats.gimpXcfDocument import GimpDocument
 
 from PIL import Image, ImageChops, ImageEnhance
+import numpy as np
+
+import crossfiledialog as cfd
+import platformdirs
 
 from morphsuit import morph, gimp
 
@@ -17,12 +21,8 @@ import pygame.gfxdraw
 import pygame.transform
 from pygame.locals import *
 
-import crossfiledialog as cfd
-import platformdirs
-
 #TODO
 """
-Angle selection controls
 Export images
 """
 
@@ -33,9 +33,12 @@ RMB = 3
 pygame.init()
 pygame.font.init()
 
-font = pygame.font.Font(size=24)
+#font = pygame.font.Font(size=24)
+fontsize = 18
+font = pygame.font.SysFont('monospace', size=fontsize)
+bldfont = pygame.font.SysFont('monospace', size=fontsize, bold=True)
 
-width, height = 1500,1000
+width, height = 1650,1000
 GN = 3
 cheight = height
 cwidth = cheight
@@ -677,6 +680,59 @@ class GridControl():
         return pixel_size, tile_size, grid_size
 
 
+class SelectionBox():
+    def __init__(self, options):
+        self.options = options
+        self.sel = 0
+        self.done = False
+
+    def render(self, screen, xpos, ypos):
+
+        color = (225,225,225)
+        selcolor = (20,20,20)
+        s = 10
+
+        width = 0
+        height = 0
+
+        text_surfaces = []
+
+        name_width = 0
+        val_width = 0
+
+        for idx, (name, value) in enumerate(self.options):
+            if idx != self.sel:
+                name_text = font.render(f'{name}:  ', True, color)
+                val_text = font.render(f'{value:0.3f}', True, color)
+            else:
+                name_text = font.render(f'{name}:  ', True, selcolor)
+                val_text = font.render(f'{value:0.3f}', True, selcolor)
+
+            name_width = max(name_width, name_text.get_width())
+            val_width = max(val_width, val_text.get_width())
+            height += max(name_text.get_height(), val_text.get_height())
+            text_surfaces.append((name_text, val_text))
+
+        width = name_width+val_width
+
+        xpos -= width/2
+        ypos -= height/2
+
+        screen.fill((0,0,0), pygame.Rect(xpos-s, ypos-s, width+2*s, height+2*s))
+
+        for idx, (name_text, val_text) in enumerate(text_surfaces):
+            line_height = max(name_text.get_height(), val_text.get_height())
+            if idx == self.sel:
+                screen.fill(color, pygame.Rect(xpos, ypos, width, line_height))
+
+            screen.blit(name_text, (xpos, ypos))
+            screen.blit(val_text, (xpos+name_width, ypos))
+            ypos += line_height
+
+    def inc_sel(self, amount):
+        self.sel+= amount
+        self.sel %= len(self.options)
+
 
 class App():
     def __init__(self, screen):
@@ -736,6 +792,9 @@ class App():
 
 
         self.grid_surface = image_to_surface(self.grid_image)
+
+        self.selection_box = None
+        self.selection_mode = None
 
         #Crop Controls
 
@@ -813,13 +872,7 @@ class App():
             json.dump(data, fp, indent = 2)
         self.dirty = False
 
-    def update_alignment_angle(self):
-        #TODO this might need a way to select from different values
-        ha, va = self.grid_control.compute_angles()
-        self.angle = sum(va)/len(va)
-
     def update_aligned_image(self):
-        self.update_alignment_angle()
         self.rotated_grid_image = self.grid_image.rotate(self.angle)
         self.final_crop_box.update_image(self.rotated_grid_image)
         self.final_alignment_box.update_image(self.rotated_grid_image)
@@ -847,7 +900,7 @@ class App():
             ('Alignment', self.final_crop_box, self.final_alignment_box, self.alignment_grid_control)
             ]:
 
-            text = font.render(header, True, color)
+            text = bldfont.render(header, True, color)
             self.screen.blit(text, (xpos, ypos))
             ypos += text.get_height()
             ypos += 10
@@ -876,26 +929,80 @@ class App():
             ypos += 10
 
             ha, va = gc.compute_angles()
+            aa = list(ha)
+            aa.extend(va)
 
-            text = 'va: '+ ', '.join(f'{x:0.3f}' for x in va)
+            text = 'Vertical Angles:   '+ ', '.join(f'{x:0.3f}' for x in va)
             text = font.render(text, True, color)
             self.screen.blit(text, (xpos, ypos))
             ypos += text.get_height()
 
-            text = 'ha: '+ ', '.join(f'{x:0.3f}' for x in ha)
+
+            text = 'Horizontal Angles: '+ ', '.join(f'{x:0.3f}' for x in ha)
             text = font.render(text, True, color)
             self.screen.blit(text, (xpos, ypos))
             ypos += text.get_height()
+
+            ypos += 3
+
+            havg = sum(ha)/len(ha)
+            vavg = sum(va)/len(va)
+            aavg = sum(aa)/len(aa)
+            text = f'  Average: V {vavg:0.3f} H {havg:0.3f} A {aavg:0.3f}'
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+            hdev = np.std(ha)
+            vdev = np.std(va)
+            adev = np.std(aa)
+            text = f'  Std dev: V {vdev:0.3f} H {hdev:0.3f} A {adev:0.3f}'
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+
+            ypos += 10
 
 
             pixel_size, tile_size, grid_size = gc.compute_grid_params()
 
-            text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}, {grid_size=:0.2f}'
+            text = f'{pixel_size=:0.2f}, {tile_size=:0.2f}'
             text = font.render(text, True, color)
             self.screen.blit(text, (xpos, ypos))
             ypos += text.get_height()
 
+            text = f'{grid_size=:0.2f}'
+            text = font.render(text, True, color)
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+
+
             ypos += 20
+
+
+    def start_angle_selection(self):
+
+        ha, va = self.grid_control.compute_angles()
+        vavg = sum(va)/len(va)
+        havg = sum(ha)/len(ha)
+        avg = (sum(va)+sum(ha))/(len(va)+len(ha))
+
+        self.selection_mode = 'angle'
+
+        options = []
+        options.append(('v avg', vavg))
+        options.append(('h avg', havg))
+        options.append(('avg', avg))
+
+        for idx, val in enumerate(va):
+            options.append((f'v{idx}', val))
+
+        for idx, val in enumerate(ha):
+            options.append((f'h{idx}', val))
+
+        self.selection_box = SelectionBox(options)
 
 
     def run(self):
@@ -917,11 +1024,13 @@ class App():
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
                             self.prompt_load()
-                        if event.key == K_r:
+                        elif event.key == K_r:
                             if self.mode == 'rotate':
                                 self.grid_control.init_refs()
                             elif self.mode == 'align':
                                 self.alignment_grid_control.init_refs()
+                        elif event.key == K_a:
+                            self.start_angle_selection()
                     else:
                         if event.key == K_1:
                             self.mode = 'crop'
@@ -936,104 +1045,107 @@ class App():
                             self.update_aligned_image()
 
             if self.mode == 'rotate':
-                for event in events:
-                    if event.type == MOUSEBUTTONUP:
-                        if event.button == MMB:
+                if self.selection_box is None:
+                    for event in events:
+                        if event.type == MOUSEBUTTONUP:
+                            if event.button == MMB:
+                                pass
+                            elif event.button == LMB:
+                                if self.grid_control.finish(mpos):
+                                    self.dirty = True
+                            elif event.button == RMB:
+                                pass
+                        elif event.type == MOUSEBUTTONDOWN:
+                            if event.button == MMB:
+                                pass
+                            elif event.button == LMB:
+                                self.grid_control.activate(mpos)
+                        elif event.type == MOUSEWHEEL:
                             pass
-                        elif event.button == LMB:
-                            if self.grid_control.finish(mpos):
-                                self.dirty = True
-                        elif event.button == RMB:
-                            pass
-                    elif event.type == MOUSEBUTTONDOWN:
-                        if event.button == MMB:
-                            pass
-                        elif event.button == LMB:
-                            self.grid_control.activate(mpos)
-                    elif event.type == MOUSEWHEEL:
-                        pass
-                    elif event.type == KEYDOWN:
-                        if event.mod & KMOD_CTRL:
-                            if event.key == K_UP:
-                                self.grid_control.do_grayscale(1); self.dirty=True
-                            elif event.key == K_DOWN:
-                                self.grid_control.do_grayscale(-1); self.dirty=True
-                            elif event.key == K_LEFT:
-                                self.grid_control.do_sharpness(-1); self.dirty=True
-                            elif event.key == K_RIGHT:
-                                self.grid_control.do_sharpness(1); self.dirty=True
-                        else:
-                            if event.key == K_UP:
-                                self.grid_control.do_contrast(1); self.dirty=True
-                            elif event.key == K_DOWN:
-                                self.grid_control.do_contrast(-1); self.dirty=True
-                            elif event.key == K_LEFT:
-                                self.grid_control.do_brightness(-1); self.dirty=True
-                            elif event.key == K_RIGHT:
-                                self.grid_control.do_brightness(1); self.dirty=True
+                        elif event.type == KEYDOWN:
+                            if event.mod & KMOD_CTRL:
+                                if event.key == K_UP:
+                                    self.grid_control.do_grayscale(1); self.dirty=True
+                                elif event.key == K_DOWN:
+                                    self.grid_control.do_grayscale(-1); self.dirty=True
+                                elif event.key == K_LEFT:
+                                    self.grid_control.do_sharpness(-1); self.dirty=True
+                                elif event.key == K_RIGHT:
+                                    self.grid_control.do_sharpness(1); self.dirty=True
+                            else:
+                                if event.key == K_UP:
+                                    self.grid_control.do_contrast(1); self.dirty=True
+                                elif event.key == K_DOWN:
+                                    self.grid_control.do_contrast(-1); self.dirty=True
+                                elif event.key == K_LEFT:
+                                    self.grid_control.do_brightness(-1); self.dirty=True
+                                elif event.key == K_RIGHT:
+                                    self.grid_control.do_brightness(1); self.dirty=True
 
                 self.grid_control.update(mpos)
                 self.grid_control.render(screen)
             elif self.mode == 'align':
-                for event in events:
-                    if event.type == MOUSEBUTTONUP:
-                        if event.button == MMB:
+                if self.selection_box is None:
+                    for event in events:
+                        if event.type == MOUSEBUTTONUP:
+                            if event.button == MMB:
+                                pass
+                            elif event.button == LMB:
+                                if self.alignment_grid_control.finish(mpos):
+                                    self.dirty = True
+                            elif event.button == RMB:
+                                pass
+                        elif event.type == MOUSEBUTTONDOWN:
+                            if event.button == MMB:
+                                pass
+                            elif event.button == LMB:
+                                self.alignment_grid_control.activate(mpos)
+                        elif event.type == MOUSEWHEEL:
                             pass
-                        elif event.button == LMB:
-                            if self.alignment_grid_control.finish(mpos):
-                                self.dirty = True
-                        elif event.button == RMB:
-                            pass
-                    elif event.type == MOUSEBUTTONDOWN:
-                        if event.button == MMB:
-                            pass
-                        elif event.button == LMB:
-                            self.alignment_grid_control.activate(mpos)
-                    elif event.type == MOUSEWHEEL:
-                        pass
-                    elif event.type == KEYDOWN:
-                        if event.mod & KMOD_CTRL:
-                            if event.key == K_UP:
-                                self.alignment_grid_control.do_grayscale(1); self.dirty=True
-                            elif event.key == K_DOWN:
-                                self.alignment_grid_control.do_grayscale(-1); self.dirty=True
-                            elif event.key == K_LEFT:
-                                self.alignment_grid_control.do_sharpness(-1); self.dirty=True
-                            elif event.key == K_RIGHT:
-                                self.alignment_grid_control.do_sharpness(1); self.dirty=True
-                        else:
-                            if event.key == K_UP:
-                                self.alignment_grid_control.do_contrast(1); self.dirty=True
-                            elif event.key == K_DOWN:
-                                self.alignment_grid_control.do_contrast(-1); self.dirty=True
-                            elif event.key == K_LEFT:
-                                self.alignment_grid_control.do_brightness(-1); self.dirty=True
-                            elif event.key == K_RIGHT:
-                                self.alignment_grid_control.do_brightness(1); self.dirty=True
+                        elif event.type == KEYDOWN:
+                            if event.mod & KMOD_CTRL:
+                                if event.key == K_UP:
+                                    self.alignment_grid_control.do_grayscale(1); self.dirty=True
+                                elif event.key == K_DOWN:
+                                    self.alignment_grid_control.do_grayscale(-1); self.dirty=True
+                                elif event.key == K_LEFT:
+                                    self.alignment_grid_control.do_sharpness(-1); self.dirty=True
+                                elif event.key == K_RIGHT:
+                                    self.alignment_grid_control.do_sharpness(1); self.dirty=True
+                            else:
+                                if event.key == K_UP:
+                                    self.alignment_grid_control.do_contrast(1); self.dirty=True
+                                elif event.key == K_DOWN:
+                                    self.alignment_grid_control.do_contrast(-1); self.dirty=True
+                                elif event.key == K_LEFT:
+                                    self.alignment_grid_control.do_brightness(-1); self.dirty=True
+                                elif event.key == K_RIGHT:
+                                    self.alignment_grid_control.do_brightness(1); self.dirty=True
 
                 self.alignment_grid_control.update(mpos)
                 self.alignment_grid_control.render(screen)
 
             elif self.mode == 'crop':
-                for event in events:
-                    if event.type == MOUSEBUTTONUP:
-                        if event.button == MMB:
-                            if self.alignment_box.finish(mpos):
-                                self.dirty = True
-                        elif event.button == LMB:
-                            if self.crop_box.finish(mpos):
-                                self.crop_surface = self.crop_box.get_cropped_surface()
-                                self.dirty = True
-                        elif event.button == RMB:
-                            self.crop_box.abort()
-                            self.alignment_box.abort()
-                    elif event.type == MOUSEBUTTONDOWN:
-                        if event.button == MMB:
-                            self.alignment_box.activate(mpos)
-                        elif event.button == LMB:
-                            self.crop_box.activate(mpos)
-                    elif event.type == MOUSEWHEEL:
-                        pass
+                if self.selection_box is None:
+                    for event in events:
+                        if event.type == MOUSEBUTTONUP:
+                            if event.button == MMB:
+                                if self.alignment_box.finish(mpos):
+                                    self.dirty = True
+                            elif event.button == LMB:
+                                if self.crop_box.finish(mpos):
+                                    self.crop_surface = self.crop_box.get_cropped_surface()
+                                    self.dirty = True
+                            elif event.button == RMB:
+                                self.crop_box.abort()
+                                self.alignment_box.abort()
+                        elif event.type == MOUSEBUTTONDOWN:
+                            if event.button == MMB:
+                                self.alignment_box.activate(mpos)
+                            elif event.button == LMB:
+                                self.crop_box.activate(mpos)
+                        elif event.type == MOUSEWHEEL:
+                            pass
 
                 self.crop_box.update(mpos)
                 self.alignment_box.update(mpos)
@@ -1055,24 +1167,25 @@ class App():
 
                 self.alignment_box.render(self.screen, (0,255,0))
             elif self.mode == 'final_crop':
-                for event in events:
-                    if event.type == MOUSEBUTTONUP:
-                        if event.button == MMB:
-                            if self.final_alignment_box.finish(mpos):
-                                self.dirty = True
-                        elif event.button == LMB:
-                            if self.final_crop_box.finish(mpos):
-                                self.dirty = True
-                        elif event.button == RMB:
-                            self.final_crop_box.abort()
-                            self.final_alignment_box.abort()
-                    elif event.type == MOUSEBUTTONDOWN:
-                        if event.button == MMB:
-                            self.final_alignment_box.activate(mpos)
-                        elif event.button == LMB:
-                            self.final_crop_box.activate(mpos)
-                    elif event.type == MOUSEWHEEL:
-                        pass
+                if self.selection_box is None:
+                    for event in events:
+                        if event.type == MOUSEBUTTONUP:
+                            if event.button == MMB:
+                                if self.final_alignment_box.finish(mpos):
+                                    self.dirty = True
+                            elif event.button == LMB:
+                                if self.final_crop_box.finish(mpos):
+                                    self.dirty = True
+                            elif event.button == RMB:
+                                self.final_crop_box.abort()
+                                self.final_alignment_box.abort()
+                        elif event.type == MOUSEBUTTONDOWN:
+                            if event.button == MMB:
+                                self.final_alignment_box.activate(mpos)
+                            elif event.button == LMB:
+                                self.final_crop_box.activate(mpos)
+                        elif event.type == MOUSEWHEEL:
+                            pass
 
                 self.final_crop_box.update(mpos)
                 self.final_alignment_box.update(mpos)
@@ -1093,6 +1206,37 @@ class App():
 
                 self.final_alignment_box.render(self.screen, (0,255,0))
 
+
+            if self.selection_box is not None:
+                for event in events:
+                    if event.type == KEYDOWN:
+                        if event.key == K_UP:
+                            self.selection_box.inc_sel(-1)
+                        elif event.key == K_DOWN:
+                            self.selection_box.inc_sel(1)
+                        elif event.key == K_ESCAPE:
+                            self.selection_box = None
+                        elif event.key == K_RETURN:
+                            val = self.selection_box.options[self.selection_box.sel][1]
+                            self.selection_box = None
+                            if self.selection_mode == 'angle':
+                                self.angle = val
+                                self.update_aligned_image()
+
+
+                if self.selection_box is not None:
+                    if self.mode == 'crop':
+                        ul, lr = self.crop_box.ul, self.crop_box.lr
+                        ul, lr = [self.crop_box.to_screen(x) for x in [ul, lr]]
+                        csize = [lr[x]-ul[x] for x in [0,1]]
+                    elif self.mode == 'final_crop':
+                        ul, lr = self.cheat_box.ul, self.cheat_box.lr
+                        ul, lr = [self.cheat_box.to_screen(x) for x in [ul, lr]]
+                        csize = [lr[x]-ul[x] for x in [0,1]]
+                    else:
+                        csize = (cwidth, cheight)
+
+                    self.selection_box.render(self.screen, csize[0]/2, csize[1]/2)
 
             self.render_config()
 
