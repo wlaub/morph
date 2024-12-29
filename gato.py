@@ -873,7 +873,7 @@ class App():
         pygame.gfxdraw.box(base_surface, pygame.Rect(0,0,*base_surface.get_size()), (0,0,0,128))
         for idx, infile in enumerate(self.raw_images):
             inpath = os.path.join(self.raw_dir, infile)
-            outfile = '.'.join(infile.split('.')[:-1]) + '.png'
+            outfile = '.'.join(infile.split('.')[:-1])
             outpath = os.path.join(self.output_dir, outfile)
 
             self.screen.blit(base_surface, (0,0))
@@ -897,7 +897,7 @@ class App():
             image = self.morpher.lens_correct(image)
             image = image.rotate(self.angle)
             image = image.crop(bbox)
-            image.save(outpath)
+            image.save(outpath, format='png')
 
             stop = False
             for event in pygame.event.get():
