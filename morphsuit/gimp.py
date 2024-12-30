@@ -207,7 +207,7 @@ class GimpProject():
         if expansion != 0:
             image = self.get_expanded_layer(layer, expansion, pad_bounds=False)
         else:
-            image = layer.iamge
+            image = layer.image
 
         image = pil_to_cv(image)
 

@@ -30,7 +30,6 @@ Autocreate label names by pattern:
     what if shift+click repeats the last label and regular clikc autoincrements
     show next/current label in config pabe
 Control to set global prefix
-Control to change padding size
 Config pane with
     prefix control
     padding value
@@ -182,30 +181,40 @@ class App():
         self.scale = min(cwidth/w, cheight/h)
         self.bg_surface = pygame.transform.scale_by(self.base_surface, self.scale)
 
+        self.recompute_contours(config.get('labels', []))
+
+        self.selection = None
+
+    def recompute_contours(self, labels=None):
+        if labels is None:
+            labels = self.extract_labels()
+
         self.contours = self.project.get_layer_segments('sprites', self.padding)
         self.contours = [Contour(x) for x in self.contours]
 
-        self.selection = None
-        for label, point in config.get('labels', []):
+        for label, point in labels:
             for cnt in self.contours:
                 if cnt.get_hit(point):
                     cnt.point = point
                     cnt.label.text = label
 
 
-    def save(self):
-        labels = []
-        config = {
-            'padding': self.padding,
-            'labels': labels,
-            #TODO prefix
-            }
 
+    def extract_labels(self):
+        labels = []
         for cnt in self.contours:
             if cnt.point is None or cnt.label.text is None:
                 continue
             text = cnt.label.text
             labels.append((text, cnt.point))
+        return labels
+
+    def save(self):
+        config = {
+            'padding': self.padding,
+            'labels': self.extract_labels(),
+            #TODO prefix
+            }
 
         with open(self.config_file, 'w') as fp:
             json.dump(config, fp, indent=2)
@@ -230,6 +239,12 @@ class App():
                 cnt.point = pos
                 return
 
+    def inc_padding(self, amt):
+        self.padding += amt
+        self.padding = max(self.padding, 0)
+        self.recompute_contours()
+        self.dirty = True
+
     def render_config(self):
         xpos = cwidth+10
         ypos = 10
@@ -240,6 +255,10 @@ class App():
         if self.dirty:
             text = 'Unsaved'
         text = font.render(text, True, (255,255,0))
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
+
+        text = font.render(f'Padding: {self.padding}', True, (255,255,0))
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
 
@@ -274,6 +293,10 @@ class App():
                             self.prompt_load()
                         elif event.key == K_s:
                             self.save()
+                    elif event.key == K_UP:
+                        self.inc_padding(1)
+                    elif event.key == K_DOWN:
+                        self.inc_padding(-1)
                     elif self.selection is not None:
                         if self.selection.key(event):
                             self.dirty = True
