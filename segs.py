@@ -27,7 +27,6 @@ Render contours
 Control to set global prefix
 Config pane with
     prefix control
-    padding value
     number of segments
     Some way of showing when segments have the same label
         Maybe a list of labels with counts
@@ -96,6 +95,30 @@ class TextControl():
         self.text += char
         return True
 
+class TextBox():
+    def __init__(self, xpos, ypos, name, text=None):
+        self.xpos = xpos
+        self.ypos = ypos
+        self.name = name
+        self.text = TextControl(text, self)
+        self.get_text_image((0,0,0))
+
+    def get_text_image(self, color):
+        text = self.name+': '
+        if self.text.text is not None:
+            text += self.text.text
+        text = font.render(text, True, color)
+        self.width, self.height = text.get_size()
+        return text
+
+    def get_hit(self, pos):
+        return (pos[0] > self.xpos and pos[0] < self.xpos+self.width and
+                pos[1] > self.ypos and pos[1] < self.ypos+self.height)
+
+    def render(self, screen, color):
+        text = self.get_text_image(color)
+        screen.blit(text, (self.xpos, self.ypos))
+
 class Contour():
     def __init__(self, contour, point = None, label = None):
         self.contour = contour
@@ -105,7 +128,7 @@ class Contour():
     def get_hit(self, pos):
         return cv2.pointPolygonTest(self.contour, pos, False) > 0
 
-    def render(self, screen, scale, selected):
+    def render(self, screen, scale, selected, prefix):
         x,y,w,h = [a*scale for a in cv2.boundingRect(self.contour)]
 
         color = (0,255,0)
@@ -119,7 +142,10 @@ class Contour():
             pygame.gfxdraw.filled_circle(screen, round(xp),round(yp), 5, color)
 
         if self.label.text is not None:
-            text = font.render(self.label.text, True, color)
+            text = self.label.text
+            if prefix is not None:
+                text = prefix+text
+            text = font.render(text, True, color)
             screen.blit(text, (round(x+3), round(y+3)))
 
 
@@ -176,6 +202,12 @@ class App():
         self.scale = min(cwidth/w, cheight/h)
         self.bg_surface = pygame.transform.scale_by(self.base_surface, self.scale)
 
+        self.text_boxes = []
+        xpos = cwidth+10
+        ypos = 10
+        self.prefix_box = TextBox(xpos, ypos, 'Prefix', config.get('prefix'))
+        self.text_boxes.append(self.prefix_box)
+
         self.recompute_contours(config.get('labels', []))
 
         self.selection = None
@@ -206,7 +238,7 @@ class App():
         config = {
             'padding': self.padding,
             'labels': self.extract_labels(),
-            #TODO prefix
+            'prefix': self.prefix_box.text.text or '',
             }
 
         with open(self.config_file, 'w') as fp:
@@ -254,7 +286,9 @@ class App():
 
                 self.selection = cnt.label
                 cnt.point = pos
-                return
+                self.dirty = True
+                return True
+        return False
 
     def inc_padding(self, amt):
         self.padding += amt
@@ -275,17 +309,30 @@ class App():
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
 
-        text = font.render(f'Padding: {self.padding}', True, (255,255,0))
+        ypos += 10
+
+        text = font.render(f'Padding: {self.padding}', True, (255,255,255))
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
+
+        ypos += 10
 
         idx = self.get_auto_index()
         text = self.index_to_label(idx)
-        text = font.render(f'Current auto label: {text}', True, (255,255,0))
+        text = font.render(f'Current auto label: {text}', True, (255,255,255))
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
 
+        for box in self.text_boxes:
+            box.ypos = ypos
+            box.xpos = xpos
+            color = (0,255,0)
+            if self.selection is box.text:
+                color = (255,0,255)
+            box.render(self.screen, color)
+            ypos += box.height
 
+        ypos += 10
 
 
     def run(self):
@@ -311,8 +358,12 @@ class App():
                     if event.button == MMB:
                         pass
                     elif event.button == LMB:
-                        self.select_contour(mpos, not mods & KMOD_CTRL, not mods & KMOD_SHIFT)
-                        self.dirty = True
+                        for box in self.text_boxes:
+                            if box.get_hit(mpos):
+                                self.selection = box.text
+                                break
+                        else:
+                            self.select_contour(mpos, not mods & KMOD_CTRL, not mods & KMOD_SHIFT)
                 elif event.type == KEYDOWN:
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
@@ -339,41 +390,13 @@ class App():
 
             for cnt in self.contours:
                 is_sel = self.selection is not None and cnt is self.selection.parent
-                cnt.render(self.screen, self.scale, is_sel)
+                cnt.render(self.screen, self.scale, is_sel, self.prefix_box.text.text)
 
             self.render_config()
 
             pygame.display.update()
             time.sleep(0.05)
 
-
-
-    def trash(self):
-        image = gimp.pil_to_cv(project.layers['sprites'].image)
-
-        test_point = (200,1800)
-        image = cv2.circle(image, test_point, 5, (0,0,255,255), 2)
-
-        for cnt in contours:
-            x,y,w,h = cv2.boundingRect(cnt)
-            print(x,y,w,h)
-            color = (0,255,0,255)
-            if cv2.pointPolygonTest(cnt, test_point, False) > 0:
-                color = (0,0,255,255)
-
-            m = cv2.moments(cnt)
-            if m['m00'] == 0: continue
-
-            cx = m['m10']/m['m00']
-            cy = m['m01']/m['m00']
-
-            image = cv2.circle(image, (int(cx), int(cy)), 5, color, 2)
-
-            image = cv2.rectangle(image, (x,y), (x+w, y+h), color, 2)
-
-        image = gimp.cv_to_pil(image)
-
-        image.show()
 
 app = App()
 
