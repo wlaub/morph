@@ -269,7 +269,7 @@ class App():
 
         self.dirty = False
 
-    auto_inc_suffix = ','
+    auto_inc_suffix = ''
 
     def get_auto_index(self, inc = False):
         value = 0
