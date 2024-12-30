@@ -24,13 +24,6 @@ from pygame.locals import *
 #TODO
 """
 Render contours
-Control to set global prefix
-Config pane with
-    prefix control
-    number of segments
-    Some way of showing when segments have the same label
-        Maybe a list of labels with counts
-
 
 Update Gimp to use gato file for grid alignment instead of layers
 Update Gimp to use contours for masking and cropping sprites instead of layers
@@ -234,6 +227,17 @@ class App():
             labels.append((text, cnt.point))
         return labels
 
+    def count_labels(self):
+        counts = defaultdict(lambda:0)
+        for cnt in self.contours:
+            if cnt.point is None or cnt.label.text is None:
+                continue
+            text = cnt.label.text
+            counts[text] += 1
+        counts = list(sorted(counts.items(), key = lambda x: (x[1], x[0]), reverse=True))
+        return counts
+
+
     def save(self):
         config = {
             'padding': self.padding,
@@ -250,12 +254,13 @@ class App():
 
     def get_auto_index(self, inc = False):
         value = 0
+        width = self.auto_label_width()
 
         is_zero = True
         for cnt in self.contours:
             if cnt.label.text is not None:
                 try:
-                    value = max(value, int(cnt.label.text[:-len(self.auto_inc_suffix)]))
+                    value = max(value, int(cnt.label.text[:width]))
                     is_zero = False
                 except ValueError:
                     pass
@@ -264,8 +269,11 @@ class App():
             return value + 1
         return value
 
+    def auto_label_width(self):
+        return len(str(len(self.contours)-1))
+
     def index_to_label(self, idx):
-        digits = len(str(len(self.contours)))
+        digits = self.auto_label_width()
         return str(idx).zfill(digits)+self.auto_inc_suffix
 
     def image_to_screen(self, pos):
@@ -311,6 +319,10 @@ class App():
 
         ypos += 10
 
+        text = font.render(f'Segments: {len(self.contours)}', True, (255,255,255))
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
+
         text = font.render(f'Padding: {self.padding}', True, (255,255,255))
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
@@ -333,6 +345,17 @@ class App():
             ypos += box.height
 
         ypos += 10
+
+        labels = self.count_labels()
+        for label, count in labels:
+            text = label
+            if self.prefix_box.text.text is not None:
+                text = self.prefix_box.text.text+label
+            text = font.render(f'{count}: {text}', True, (255,255,255))
+            self.screen.blit(text, (xpos, ypos))
+            ypos += text.get_height()
+
+
 
 
     def run(self):
