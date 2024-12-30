@@ -24,11 +24,6 @@ from pygame.locals import *
 #TODO
 """
 Render contours
-Autocreate label names by pattern:
-    e.g. 00_, 01_, 02_, etc when clicking on a segment that doesn't have a name
-    determine 0 padding from number of different segments
-    what if shift+click repeats the last label and regular clikc autoincrements
-    show next/current label in config pabe
 Control to set global prefix
 Config pane with
     prefix control
@@ -198,8 +193,6 @@ class App():
                     cnt.point = point
                     cnt.label.text = label
 
-
-
     def extract_labels(self):
         labels = []
         for cnt in self.contours:
@@ -221,7 +214,27 @@ class App():
 
         self.dirty = False
 
+    auto_inc_suffix = '_'
 
+    def get_auto_index(self, inc = False):
+        value = 0
+
+        is_zero = True
+        for cnt in self.contours:
+            if cnt.label.text is not None:
+                try:
+                    value = max(value, int(cnt.label.text[:-len(self.auto_inc_suffix)]))
+                    is_zero = False
+                except ValueError:
+                    pass
+        if is_zero: return 0
+        if inc:
+            return value + 1
+        return value
+
+    def index_to_label(self, idx):
+        digits = len(str(len(self.contours)))
+        return str(idx).zfill(digits)+self.auto_inc_suffix
 
     def image_to_screen(self, pos):
         return tuple(x*self.scale for x in pos)
@@ -229,12 +242,16 @@ class App():
     def screen_to_image(self, pos):
         return tuple(x/self.scale for x in pos)
 
-    def select_contour(self, mpos):
+    def select_contour(self, mpos, auto_label, auto_inc):
         pos = self.screen_to_image(mpos)
 
         self.selection = None
         for cnt in self.contours:
             if cnt.get_hit(pos):
+                if cnt.label.text is None and auto_label:
+                    idx = self.get_auto_index(auto_inc)
+                    cnt.label.text = self.index_to_label(idx)
+
                 self.selection = cnt.label
                 cnt.point = pos
                 return
@@ -262,11 +279,20 @@ class App():
         self.screen.blit(text, (xpos, ypos))
         ypos += text.get_height()
 
+        idx = self.get_auto_index()
+        text = self.index_to_label(idx)
+        text = font.render(f'Current auto label: {text}', True, (255,255,0))
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
+
+
+
 
     def run(self):
         while True:
             mpos = pygame.mouse.get_pos()
             keys = pygame.key.get_pressed()
+            mods = pygame.key.get_mods()
 
             events = []
             for event in pygame.event.get():
@@ -285,7 +311,7 @@ class App():
                     if event.button == MMB:
                         pass
                     elif event.button == LMB:
-                        self.select_contour(mpos)
+                        self.select_contour(mpos, not mods & KMOD_CTRL, not mods & KMOD_SHIFT)
                         self.dirty = True
                 elif event.type == KEYDOWN:
                     if event.mod & KMOD_CTRL:
