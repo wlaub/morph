@@ -14,7 +14,7 @@ import numpy as np
 import crossfiledialog as cfd
 import platformdirs
 
-from morphsuit import morph, gimp
+from morphsuit import morph, gimp, ui
 
 import pygame
 import pygame.gfxdraw
@@ -53,40 +53,7 @@ def surface_to_image(surface):
         pygame.image.tobytes(surface, "RGB", False)
         )
 
-class AppConfig:
-    def __init__(self):
-        self.config_dir = platformdirs.user_data_dir('gato')
-        self.config_file = os.path.join(self.config_dir, 'state.json')
-
-        self.config = {}
-        if os.path.exists(self.config_file):
-            with open(self.config_file, 'r') as fp:
-                self.config = json.load(fp)
-
-    def save(self):
-        os.makedirs(self.config_dir, exist_ok = True)
-        with open(self.config_file, 'w') as fp:
-            json.dump(self.config, fp)
-
-app_config = AppConfig()
-
-def memory_select(callback, **kwargs):
-    kwargs['start_dir'] = app_config.config.get('start_dir', os.path.expanduser('~'))
-    result = callback(**kwargs)
-
-    if result == '' or result is None:
-        return None
-
-    if not isinstance(result, str):
-        ref = result[0]
-    else:
-        ref = result
-
-    app_config.config['start_dir'] = os.path.dirname(result)
-    app_config.save()
-
-    return result
-
+app_config = ui.AppConfig('gato')
 
 class CropBox():
     def __init__(self, base_image, int_corners = True, data = None):
@@ -756,7 +723,7 @@ class App():
             self.load()
 
     def prompt_load(self):
-        project_dir = memory_select(cfd.choose_folder)
+        project_dir = app_config.memory_select(cfd.choose_folder)
         if project_dir is not None:
             self.project_dir = project_dir
             app_config.config['current_project'] = self.project_dir
@@ -1056,8 +1023,6 @@ class App():
 
 
     def run(self):
-        cropping = False
-        grid_target = (0,0)
         self.dirty = False
         while True:
             mpos = pygame.mouse.get_pos()
@@ -1073,7 +1038,7 @@ class App():
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
                             self.prompt_load()
-                        elif event.key == K_r and (event.mode & KMOD_SHIFT):
+                        elif event.key == K_r and (event.mod & KMOD_SHIFT):
                             if self.mode == 'rotate':
                                 self.grid_control.init_refs()
                             elif self.mode == 'align':

@@ -180,15 +180,58 @@ class GimpProject():
 
     def expand_layers(self, layer_group, amount):
         for name in self.groups[layer_group]:
-            layer = self.layers[name]
+            self.expand_layer(name, amount)
+
+    def expand_layer(self, name, amount):
+        layer = self.layers[name]
+        layer.image = self.get_expanded_layer(name, amount)
+
+    def get_expanded_layer(self, layer, amount, pad_bounds = True):
+        if isinstance(layer, str):
+            layer = self.layers[layer]
+
+        if pad_bounds:
             self.pad_layer_bounds(layer, amount)
-            a = pil_to_cv(layer.image)
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (amount, amount))
-            a = cv2.dilate(a, kernel, iterations=1)
-            a = cv_to_pil(a)
-            layer.image = a
+
+        a = pil_to_cv(layer.image)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (amount, amount))
+        a = cv2.dilate(a, kernel, iterations=1)
+        a = cv_to_pil(a)
+        return a
 
 
+    def get_layer_segments(self, layer, expansion = 0):
+        if isinstance(layer, str):
+            layer = self.layers[layer]
+
+        if expansion != 0:
+            image = self.get_expanded_layer(layer, expansion, pad_bounds=False)
+        else:
+            image = layer.iamge
+
+        image = pil_to_cv(image)
+
+        _,_,_,alpha = cv2.split(image)
+
+        ret, thresh = cv2.threshold(alpha, 127,255,0)
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        return contours
+
+    def map_segment_labels(self, contours, labels):
+        result = {}
+
+        for cnt in contours:
+            for label, point in labels.items():
+                if cv2.pointPolygonTest(cnt, point, False) > 0:
+                    if label in result.keys():
+                        print(f'Warning: label {label} ({point}) matches multiple segments')
+                    result[label] = cnt
+                    break
+            else:
+                print(f'Warning: no matching segment for {label}: {point}')
+
+        return result
 
     def _get_layer_bbox(self, layer):
         x, y, w, h = (layer.xOffset, layer.yOffset, layer.width, layer.height)
