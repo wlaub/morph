@@ -123,11 +123,11 @@ class Contour():
         x,y,w,h = [a*scale for a in cv2.boundingRect(self.contour)]
 
         color = (0,255,0)
-        if selected:
-            color = (255,0,255)
-
         if self.point is None or self.label.text is None:
             color = (255,0,0)
+
+        if selected:
+            color = (255,0,255)
 
         pygame.gfxdraw.rectangle(screen, pygame.Rect(x,y,w,h), color)
 
@@ -201,10 +201,17 @@ class App():
         self.bg_surface = pygame.transform.scale_by(self.base_surface, self.scale)
 
         self.text_boxes = []
+
         xpos = cwidth+10
         ypos = 10
+
+        self.auto_prefix_box = TextBox(xpos, ypos, 'Auto Prefix', config.get('auto_prefix'))
+        self.text_boxes.append(self.auto_prefix_box)
+
         self.prefix_box = TextBox(xpos, ypos, 'Prefix', config.get('prefix'))
         self.text_boxes.append(self.prefix_box)
+
+
 
         self.recompute_contours(config.get('labels', []))
 
@@ -254,6 +261,7 @@ class App():
             'padding': self.padding,
             'labels': self.extract_labels(),
             'prefix': self.prefix_box.text.text or '',
+            'auto_prefix': self.auto_prefix_box.text.text or '',
             }
 
         with open(self.config_file, 'w') as fp:
@@ -261,17 +269,20 @@ class App():
 
         self.dirty = False
 
-    auto_inc_suffix = '_'
+    auto_inc_suffix = ','
 
     def get_auto_index(self, inc = False):
         value = 0
         width = self.auto_label_width()
 
+        auto_prefix = self.auto_prefix_box.text.text or ''
+
         is_zero = True
         for cnt in self.contours:
             if cnt.label.text is not None:
+                if not cnt.label.text.startswith(auto_prefix): continue
                 try:
-                    value = max(value, int(cnt.label.text[:width]))
+                    value = max(value, int(cnt.label.text[len(auto_prefix):len(auto_prefix)+width]))
                     is_zero = False
                 except ValueError:
                     pass
@@ -285,7 +296,8 @@ class App():
 
     def index_to_label(self, idx):
         digits = self.auto_label_width()
-        return str(idx).zfill(digits)+self.auto_inc_suffix
+        auto_prefix = self.auto_prefix_box.text.text or ''
+        return auto_prefix+str(idx).zfill(digits)+self.auto_inc_suffix
 
     def image_to_screen(self, pos):
         return tuple(x*self.scale for x in pos)
