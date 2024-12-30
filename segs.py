@@ -23,8 +23,6 @@ from pygame.locals import *
 
 #TODO
 """
-Render contours
-
 Update Gimp to use gato file for grid alignment instead of layers
 Update Gimp to use contours for masking and cropping sprites instead of layers
     if multiple segments have the same label, then merge them
@@ -128,7 +126,14 @@ class Contour():
         if selected:
             color = (255,0,255)
 
+        if self.point is None or self.label.text is None:
+            color = (255,0,0)
+
         pygame.gfxdraw.rectangle(screen, pygame.Rect(x,y,w,h), color)
+
+        if selected:
+            points = [[round(y*scale) for y in x[0]] for x in self.contour]
+            pygame.gfxdraw.aapolygon(screen, points, (0,0,255))
 
         if self.point is not None:
             xp,yp = [a*scale for a in self.point]
@@ -237,6 +242,12 @@ class App():
         counts = list(sorted(counts.items(), key = lambda x: (x[1], x[0]), reverse=True))
         return counts
 
+    def count_unlabeled(self):
+        result = 0
+        for cnt in self.contours:
+            if cnt.point is None or cnt.label.text is None:
+                result += 1
+        return result
 
     def save(self):
         config = {
@@ -343,6 +354,13 @@ class App():
                 color = (255,0,255)
             box.render(self.screen, color)
             ypos += box.height
+
+        ypos += 10
+
+        count = self.count_unlabeled()
+        text = font.render(f'Unlabeled: {count}', True, (255,255,255))
+        self.screen.blit(text, (xpos, ypos))
+        ypos += text.get_height()
 
         ypos += 10
 
