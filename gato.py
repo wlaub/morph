@@ -632,7 +632,7 @@ class GridControl():
             for j in range(GN):
                 r,s = self.vrefs[i]
                 a = intersect(p,q,r,s)
-                a = (a[0]-ul[0], a[0]-ul[1])
+                a = (a[0]-ul[0], a[1]-ul[1])
                 result.append(a)
         return result
 

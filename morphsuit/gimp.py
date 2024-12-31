@@ -1,11 +1,12 @@
 import math
 import os
+import json
 
 from collections import defaultdict
 
 import cv2
 import numpy as np
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageOps, ImageTransform
 
 from gimpformats.gimpXcfDocument import GimpDocument
 
@@ -36,19 +37,98 @@ class WrappedLayer():
             return self.image
         return getattr(self.layer, name)
 
+class SpriteMask():
+    def __init__(self, contours, label, size):
+        self.contours = contours
+        self.label = label
+        self.size = size
+        self.render_mask()
+
+    def render_mask(self):
+        #I don't want to think about w/h ordering or w/e
+        image = Image.new('L', self.size, 0)
+        image = np.array(image)
+        cv2.drawContours(image, self.contours, -1, 255, -1)
+        image = Image.fromarray(image)
+        self.image = image
+
+    def _bbox(self, cnt):
+        x,y,w,h = cv2.boundingRect(cnt)
+        l = x
+        r = x+w
+        t = y
+        b = y+h
+        return l, t, r, b
+
+    def get_bbox(self):
+        l, t, r, b = self._bbox(self.contours[0])
+        for cnt in self.contours[1:]:
+            nl, nt, nr, nb = self._bbox(cnt)
+            l = min(nl, l)
+            r = max(nr, r)
+            t = min(nt, t)
+            b = max(nb, b)
+
+        return l, r, t, b
+
+
+
 class GimpProject():
-    def __init__(self, filename, cache_dir):
-        self.filename = filename
-        self.cache_dir = cache_dir
-        self.data = GimpDocument(filename)
+    def __init__(self, project_dir):
+
+        self.project_dir = project_dir
+
+        self.filename = os.path.join(project_dir, 'inputs.xcf')
+        self.cache_dir = os.path.join(project_dir, 'gimp_cache')
+        self.output_dir = os.path.join(project_dir, 'outputs')
+        self.data = GimpDocument(self.filename)
+
+        gato_file = os.path.join(project_dir, 'gato.json')
+        segs_file = os.path.join(project_dir, 'segs.json')
+
+        self.gato_config = None
+        if os.path.exists(gato_file):
+            with open(gato_file, 'r') as fp:
+                self.gato_config = json.load(fp)
+
+        self.segs_config = None
+        if os.path.exists(segs_file):
+            with open(segs_file, 'r') as fp:
+                self.segs_config = json.load(fp)
+
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self.init_layers()
+#        self.export_layers()
+        self.update_cache()
+        self._sub_cache(loud=False)
 
         self.init_sprites()
-        self.init_layers()
-
-        self._sub_cache(loud=False)
 
     def init_sprites(self):
         self.sprites = {}
+
+        self.sprite_masks = []
+
+        if self.segs_config is None:
+            return
+
+        contours = self.get_layer_segments('sprites', self.segs_config['padding'])
+#        contours = self.get_layer_segments('sprites', 50)
+        labels = self.segs_config['labels']
+        prefix = self.segs_config['prefix']
+
+        label_map = defaultdict(list)
+
+        for cnt in contours:
+            for name, point in labels:
+                if cv2.pointPolygonTest(cnt, point, False) <= 0:
+                    continue
+                label = prefix+name
+                label_map[label].append(cnt)
+                break
+
+        for label, contours in label_map.items():
+            self.sprite_masks.append(SpriteMask(contours, label, self.size))
 
     @classmethod
     def _convert_number(cls, x):
@@ -116,13 +196,30 @@ class GimpProject():
     def size(self):
         return self.data.width, self.data.height
 
+    def get_layer_cache_file(self, layer):
+        return os.path.join(self.cache_dir, f'{layer.name}.png')
+
+
     def export_layers(self, layer_group = None, loud=True):
         for layer in self.data.layers:
             if layer_group is not None and layer.name not in self.groups[layer_group]:
                 continue
             if layer.isGroup:
                 continue
-            name = os.path.join(self.cache_dir, f'{layer.name}.png')
+            self.cache_layer(layer, loud)
+
+    def update_cache(self):
+        gimp_stamp = os.path.getmtime(self.filename)
+        for layer in self.data.layers:
+            if layer.isGroup:
+                continue
+            filename = self.get_layer_cache_file(layer)
+            stamp = os.path.getmtime(filename)
+            if gimp_stamp > stamp:
+                self.cache_layer(layer, loud= True)
+
+    def cache_layer(self, layer, loud):
+            name = self.get_layer_cache_file(layer)
             if loud:
                 print(f'Saving {name}')
             layer.image.save(name)
@@ -130,7 +227,7 @@ class GimpProject():
 
     def _sub_cache(self, loud=True):
         for name, layer in self.layers.items():
-            filename = os.path.join(self.cache_dir, f'{layer.name}.png')
+            filename = self.get_layer_cache_file(layer)
             if os.path.exists(filename):
                 image = Image.open(filename)
                 layer.sub_image(image)
@@ -251,7 +348,7 @@ class GimpProject():
             if crop_to_mask:
                 bbox = self._get_layer_bbox(mask_layer)
                 pixel_size, tile_size = self._get_export_sizes(None, None)
-                grid_offset = self.get_grid_offset('r')
+                grid_offset = self.get_grid_offset()
                 ebbox = self.expand_bbox_to_tiles(bbox, grid_offset, pixel_size, tile_size)
 
             mask_layer = mask_layer.image
@@ -289,26 +386,49 @@ class GimpProject():
 
         result = {}
 
-        for sprite_name in self.groups[sprite_group]:
-            out_frame = self.mask_layers(composed_frame, sprite_name, crop_to_mask=True)
+        for sprite_mask in self.sprite_masks:
+            sprite_name = sprite_mask.label
+            mask = sprite_mask.image
+            bbox = mask.getbbox()
+
+            pixel_size, tile_size = self._get_export_sizes(None, None)
+            grid_offset = self.get_grid_offset()
+            ebbox = self.expand_bbox_to_tiles(bbox, grid_offset, pixel_size, tile_size, do_round = False)
+
+            out_frame = composed_frame.copy()
+            alpha = ImageChops.multiply(mask, composed_frame.getchannel('A'))
+            out_frame.putalpha(alpha)
+
+            w = math.ceil(ebbox[2]-ebbox[0])
+            h = math.ceil(ebbox[3]-ebbox[1])
+
+#            out_frame = out_frame.crop(ebbox)
+            out_frame = out_frame.transform((w,h), Image.Transform.EXTENT, ebbox, resample=Image.Resampling.BILINEAR)
 
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
             result[sprite_name] = out_frame
+
+#        for sprite_name in self.groups[sprite_group]:
+#            out_frame = self.mask_layers(composed_frame, sprite_name, crop_to_mask=True)
+#
+#            _frames = self.sprites.setdefault(sprite_name, [])
+#            _frames.append(out_frame)
+#            result[sprite_name] = out_frame
         return result
 
 
-    def get_grid_offset(self, varname, pixel_size = None, tile_size = None):
+    def get_grid_offset(self, pixel_size = None, tile_size = None):
         """
         get average grid offset in image pixels from a list of coordinates
         """
-        coords = list(self.variables[varname])
+
+        coords = list(self.gato_config['alignment_grid']['grid']['refs'])
 
         pixel_size,tile_size = self._get_export_sizes(pixel_size, tile_size)
         scale_factor = tile_size/pixel_size
 
         for idx, vals in enumerate(coords):
-
             vals = tuple(x*scale_factor for x in vals)
             vals = tuple(x-int(x) for x in vals)
             vals = tuple(x/scale_factor for x in vals)
@@ -322,7 +442,7 @@ class GimpProject():
 
         return avgs
 
-    def expand_bbox_to_tiles(self, bbox, grid_offset, pixel_size, tile_size):
+    def expand_bbox_to_tiles(self, bbox, grid_offset, pixel_size, tile_size, do_round = True):
         left, top, right, bot = bbox
 
         grid_size = pixel_size/tile_size #px per tile
@@ -336,30 +456,44 @@ class GimpProject():
         top = math.floor((top-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
         bot = math.ceil((bot-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
 
+
+        #expand to even number of tiles
+#        wn = (right-left)/grid_size
+
+
         new_bbox = left, top, right, bot
 
-        new_bbox = [round(x) for x in new_bbox]
+        if do_round:
+            new_bbox = [round(x) for x in new_bbox]
 
         return new_bbox
 
 
     def _get_export_sizes(self, pixel_size, tile_size):
         if pixel_size is None:
-            try:
-                pixel_size = self.variables['pixel_size']
-            except KeyError:
-                raise KeyError(f'No pixel_size specified in project {self.variables.keys()}')
+            if self.gato_config is not None:
+                pixel_size = self.gato_config['alignment_grid']['grid']['pixel_size']
+            else:
+                try:
+                    pixel_size = self.variables['pixel_size']
+                except KeyError:
+                    raise KeyError(f'No pixel_size specified in project {self.variables.keys()}')
         if tile_size is None:
-            try:
-                tile_size = self.variables['tile_size']
-            except KeyError:
-                raise KeyError(f'No tile_size specified in project {self.variables.keys()}')
+            if self.gato_config is not None:
+                tile_size = self.gato_config['alignment_grid']['grid']['tile_size']
+            else:
+                try:
+                    tile_size = self.variables['tile_size']
+                except KeyError:
+                    raise KeyError(f'No tile_size specified in project {self.variables.keys()}')
         if tile_size > pixel_size:
             raise ValueError(f'{pixel_size=} < {tile_size=}')
 
         return pixel_size, tile_size
 
     def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, **custom_gif_kwargs):
+        output_dir = os.path.join(self.output_dir, output_dir)
+        os.makedirs(output_dir, exist_ok = True)
         gif_kwargs = {
             'duration': 100,
             'loop': 0,
@@ -379,6 +513,9 @@ class GimpProject():
             base.save(os.path.join(output_dir, f'{sprite_name}.gif'), save_all=True, append_images=frames[1:], **gif_kwargs)
 
     def export_sprites(self, output_dir, pixel_size=None, tile_size=None, gui_scale = False):
+        output_dir = os.path.join(self.output_dir, output_dir)
+        os.makedirs(output_dir, exist_ok = True)
+
         pixel_size, tile_size = self._get_export_sizes(pixel_size, tile_size)
 
         if gui_scale:

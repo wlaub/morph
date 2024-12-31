@@ -23,12 +23,6 @@ from pygame.locals import *
 
 #TODO
 """
-Update Gimp to use gato file for grid alignment instead of layers
-Update Gimp to use contours for masking and cropping sprites instead of layers
-    if multiple segments have the same label, then merge them
-    Probably pre-generate mask images for masking with same size as cropping bounds
-    crop, then mask cropped image
-    pillow transform module for subpixel cropping?
 """
 
 LMB = 1
