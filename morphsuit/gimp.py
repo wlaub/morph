@@ -98,7 +98,6 @@ class GimpProject():
 
         os.makedirs(self.cache_dir, exist_ok=True)
         self.init_layers()
-#        self.export_layers()
         self.update_cache()
         self._sub_cache(loud=False)
 
@@ -113,7 +112,6 @@ class GimpProject():
             return
 
         contours = self.get_layer_segments('sprites', self.segs_config['padding'])
-#        contours = self.get_layer_segments('sprites', 50)
         labels = self.segs_config['labels']
         prefix = self.segs_config['prefix']
 
@@ -392,8 +390,9 @@ class GimpProject():
             bbox = mask.getbbox()
 
             pixel_size, tile_size = self._get_export_sizes(None, None)
-            grid_offset = self.get_grid_offset()
-            ebbox = self.expand_bbox_to_tiles(bbox, grid_offset, pixel_size, tile_size, do_round = False)
+#            grid_offset = self.get_grid_offset()
+#            grid_offset = self.get_nearest_grid_offset((bbox[0], bbox[1]))
+            ebbox = self.expand_bbox_to_tiles(bbox, None, pixel_size, tile_size, do_round = False)
 
             out_frame = composed_frame.copy()
             alpha = ImageChops.multiply(mask, composed_frame.getchannel('A'))
@@ -409,12 +408,6 @@ class GimpProject():
             _frames.append(out_frame)
             result[sprite_name] = out_frame
 
-#        for sprite_name in self.groups[sprite_group]:
-#            out_frame = self.mask_layers(composed_frame, sprite_name, crop_to_mask=True)
-#
-#            _frames = self.sprites.setdefault(sprite_name, [])
-#            _frames.append(out_frame)
-#            result[sprite_name] = out_frame
         return result
 
 
@@ -442,6 +435,30 @@ class GimpProject():
 
         return avgs
 
+    def get_nearest_grid_offset(self, point, pixel_size = None, tile_size = None):
+        """
+        get the grid offset based on the point nearest the given coordinate
+        """
+
+        coords = list(self.gato_config['alignment_grid']['grid']['refs'])
+
+        def dist(x,y):
+            return (x[0]-y[0])**2+(x[1]-y[1])**2
+
+        coords = list(sorted(coords, key = lambda x: dist(x, point)))
+
+        pixel_size,tile_size = self._get_export_sizes(pixel_size, tile_size)
+        scale_factor = tile_size/pixel_size
+
+        vals = coords[0]
+
+        vals = tuple(x*scale_factor for x in vals)
+        vals = tuple(x-int(x) for x in vals)
+        vals = tuple(x/scale_factor for x in vals)
+
+        return vals
+
+
     def expand_bbox_to_tiles(self, bbox, grid_offset, pixel_size, tile_size, do_round = True):
         left, top, right, bot = bbox
 
@@ -449,11 +466,17 @@ class GimpProject():
 
         #gx + gs*N = left
         #N = (left-gx)/gs
+        dynamic_offset = grid_offset is None
+        if dynamic_offset:
+            grid_offset = self.get_nearest_grid_offset((left, top), pixel_size, tile_size)
 
         left = math.floor((left-grid_offset[0])/grid_size)*grid_size + grid_offset[0]
-        right = math.ceil((right-grid_offset[0])/grid_size)*grid_size + grid_offset[0]
-
         top = math.floor((top-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
+
+        if dynamic_offset:
+            grid_offset = self.get_nearest_grid_offset((right, bot), pixel_size, tile_size)
+
+        right = math.ceil((right-grid_offset[0])/grid_size)*grid_size + grid_offset[0]
         bot = math.ceil((bot-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
 
 
