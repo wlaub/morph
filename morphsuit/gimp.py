@@ -212,8 +212,12 @@ class GimpProject():
             if layer.isGroup:
                 continue
             filename = self.get_layer_cache_file(layer)
-            stamp = os.path.getmtime(filename)
-            if gimp_stamp > stamp:
+            if os.path.exists(filename):
+                stamp = os.path.getmtime(filename)
+            else:
+                stamp = None
+
+            if stamp is None or gimp_stamp > stamp:
                 self.cache_layer(layer, loud= True)
 
     def cache_layer(self, layer, loud):
@@ -273,13 +277,13 @@ class GimpProject():
         layer.image = ImageOps.expand(layer.image, amount, (0,0,0,0))
 
 
-    def expand_layers(self, layer_group, amount):
+    def expand_layers(self, layer_group, amount, pad_bounds = True):
         for name in self.groups[layer_group]:
-            self.expand_layer(name, amount)
+            self.expand_layer(name, amount, pad_bounds)
 
-    def expand_layer(self, name, amount):
+    def expand_layer(self, name, amount, pad_bounds = True):
         layer = self.layers[name]
-        layer.image = self.get_expanded_layer(name, amount)
+        layer.image = self.get_expanded_layer(name, amount, pad_bounds)
 
     def get_expanded_layer(self, layer, amount, pad_bounds = True):
         if isinstance(layer, str):
@@ -376,6 +380,7 @@ class GimpProject():
             alpha = ImageChops.multiply(alpha, result.getchannel('A'))
         except ValueError:
             pass
+
         result.putalpha(alpha)
 
         return result
@@ -514,6 +519,13 @@ class GimpProject():
 
         return pixel_size, tile_size
 
+    def fix_sprite_name(self, name):
+        try:
+            int(name[-1])
+            return name+'.'
+        except:
+            return name
+
     def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, **custom_gif_kwargs):
         output_dir = os.path.join(self.output_dir, output_dir)
         os.makedirs(output_dir, exist_ok = True)
@@ -547,8 +559,12 @@ class GimpProject():
         for sprite_name, frames in sorted(self.sprites.items()):
             print(f'Writing {sprite_name}')
             frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
+            sprite_name = self.fix_sprite_name(sprite_name)
             for idx, frame in enumerate(frames):
-                frame.save(os.path.join(output_dir,f'{sprite_name}{idx:02}.png'))
+                frame_name = sprite_name
+                if len(frames) > 1:
+                    frame_name += f'{idx:02}'
+                frame.save(os.path.join(output_dir,f'{frame_name}.png'))
 
 
 

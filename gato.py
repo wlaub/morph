@@ -42,6 +42,7 @@ GN = 3
 cheight = height
 cwidth = cheight
 
+ROTATE_RESAMPLE = Image.Resampling.BICUBIC
 
 screen=pygame.display.set_mode((width, height))
 
@@ -862,7 +863,7 @@ class App():
 
             image = Image.open(inpath)
             image = self.morpher.lens_correct(image)
-            image = image.rotate(self.angle)
+            image = image.rotate(self.angle, resample = ROTATE_RESAMPLE)
             image = image.crop(bbox)
             image.save(outpath, format='png')
 
@@ -890,7 +891,7 @@ class App():
         self.dirty = False
 
     def update_aligned_image(self):
-        self.rotated_grid_image = self.grid_image.rotate(self.angle)
+        self.rotated_grid_image = self.grid_image.rotate(self.angle, resample = ROTATE_RESAMPLE)
         self.final_crop_box.update_image(self.rotated_grid_image)
         self.final_alignment_box.update_image(self.rotated_grid_image)
         self.alignment_grid_control.update_image(self.rotated_grid_image)
