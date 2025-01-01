@@ -138,7 +138,10 @@ class Contour():
             if prefix is not None:
                 text = prefix+text
             text = font.render(text, True, color)
-            screen.blit(text, (round(x+3), round(y+3)))
+            xpos = round(x+3)
+            ypos = round(y+3)
+            pygame.gfxdraw.box(screen, pygame.Rect(xpos, ypos, *text.get_size()), (0,0,0,128))
+            screen.blit(text, (xpos, ypos))
 
 
 
@@ -171,7 +174,7 @@ class App():
 
 
     def load(self):
-        self.project = gimp.GimpProject(os.path.join(self.project_dir, 'inputs.xcf'), 'output')
+        self.project = gimp.GimpProject(self.project_dir)
         #project.export_layers()
         #project.export_layers('sprites')
 
@@ -186,13 +189,16 @@ class App():
         self.padding = config.get('padding', 10)
 
         self.base_image = self.project.layers['sprites'].image
+        self.grid_image = self.project.layers['grid'].image
 #        self.base_image = self.project.get_expanded_layer('sprites', self.padding)
         self.base_surface = image_to_surface(self.base_image)
+        self.grid_surface = image_to_surface(self.grid_image)
 
         w,h = self.base_surface.get_size()
 
         self.scale = min(cwidth/w, cheight/h)
         self.bg_surface = pygame.transform.scale_by(self.base_surface, self.scale)
+        self.grid_surface = pygame.transform.scale_by(self.grid_surface, self.scale)
 
         self.text_boxes = []
 
@@ -432,6 +438,9 @@ class App():
 
 
             self.screen.fill( (64,64,64) )
+
+            self.screen.blit(self.grid_surface, (0,0))
+#            pygame.gfxdraw.box(self.screen, pygame.Rect(0,0,cwidth, cheight), (0,0,0,128))
 
             self.screen.blit(self.bg_surface, (0,0))
 
