@@ -484,10 +484,15 @@ class GimpProject():
         right = math.ceil((right-grid_offset[0])/grid_size)*grid_size + grid_offset[0]
         bot = math.ceil((bot-grid_offset[1])/grid_size)*grid_size + grid_offset[1]
 
-
         #expand to even number of tiles
-#        wn = (right-left)/grid_size
+        wn = round((right-left)/grid_size)
+        hn = round((bot-top)/grid_size)
 
+        if wn % 2:
+            left -= grid_size
+
+        if hn % 2:
+            top -= grid_size
 
         new_bbox = left, top, right, bot
 
