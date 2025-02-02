@@ -4,14 +4,18 @@ import tabulate
 
 from gimpformats.gimpXcfDocument import GimpDocument
 
+import crossfiledialog as cfd
+import platformdirs
+
 from PIL import Image, ImageChops
 
-from morphsuit import morph, gimp
+from morphsuit import morph, gimp, ui
 
-project = gimp.GimpProject('inputs.xcf', 'output')
+app_config = ui.AppConfig('gato')
 
-tile_size = 39
-pixel_size = 2061
+project_dir = app_config.memory_select(cfd.choose_folder)
+
+project = gimp.GimpProject(project_dir)
 
 part_letters = 'abcdefghijkm'
 colors = [str(x) for x in range(21)]
@@ -27,7 +31,7 @@ masks = {
 '2r1b': (13,3),
 '1r2b': (34,0),
 '2r2b': (27,4),
-'extra': (13,3),
+#'extra': (13,3),
 }
 
 def frame_to_color_index(frame, offset, step_offset, N):
@@ -68,6 +72,7 @@ for color in colors:
 #print(coverage)
 
 #Build the frames
+project.expand_layers('masks', 1, pad_bounds = False)
 for frame in range(frame_count):
     print(f'frame {frame}')
     #Build the entire frame
@@ -79,11 +84,16 @@ for frame in range(frame_count):
         a = project.mask_layers(str(color), mask_name)
         project.paste(composed_frame, a)
 
+    #static colors
+#    a = project.mask_layers('stem0', 'mstem0')
+#    project.paste(composed_frame, a)
 
 
     project.paste(composed_frame, 'lines')
 
+    project.extract_sprite_frames(composed_frame)
 
+    """
     #Chop it up into individual parts
     for letter in part_letters:
         out_frame = project.mask_layers(composed_frame, letter, crop_to_mask=True)
@@ -91,7 +101,11 @@ for frame in range(frame_count):
 
         _frames = rendered_frames.setdefault(letter, [])
         _frames.append(out_frame)
+    """
 
+project.export_sprites('sprites')
+
+"""
 #To save gif
 for letter, frames in rendered_frames.items():
     base = frames[0]
@@ -102,7 +116,7 @@ if False:
     for letter, frames in rendered_frames.items():
         for idx, frame in enumerate(frames):
             frame.save(f'output/sprite/{letter}{idx:02}.png')
-
+"""
 
 
 

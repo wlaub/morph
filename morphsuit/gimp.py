@@ -38,10 +38,18 @@ class WrappedLayer():
         return getattr(self.layer, name)
 
 class SpriteMask():
-    def __init__(self, contours, label, size):
+    def __init__(self, contours, label, size, ref_points = None):
         self.contours = contours
         self.label = label
         self.size = size
+
+        self.angle = None
+        if ref_points is not None:
+            dx = ref_points[1][0] - ref_points[0][0]
+            dy = ref_points[1][1] - ref_points[0][1]
+            self.angle = math.atan2(dy, dx)*180/math.pi
+            print(f'{label}: {self.angle}')
+
         self.render_mask()
 
     def render_mask(self):
@@ -101,9 +109,9 @@ class GimpProject():
         self.update_cache()
         self._sub_cache(loud=False)
 
-        self.init_sprites()
+        self.init_sprites('sprites')
 
-    def init_sprites(self):
+    def init_sprites(self, layer_name, bonus_prefix = ''):
         self.sprites = {}
 
         self.sprite_masks = []
@@ -111,22 +119,30 @@ class GimpProject():
         if self.segs_config is None:
             return
 
-        contours = self.get_layer_segments('sprites', self.segs_config['padding'])
+        contours = self.get_layer_segments(layer_name, self.segs_config['padding'])
         labels = self.segs_config['labels']
         prefix = self.segs_config['prefix']
 
         label_map = defaultdict(list)
+        ref_map = {}
 
         for cnt in contours:
-            for name, point in labels:
+            for entry in labels:
+                name = entry[0]
+                point = entry[1]
+                ref_points = None
+                if len(entry) > 2:
+                    ref_points = entry[2]
                 if cv2.pointPolygonTest(cnt, point, False) <= 0:
                     continue
                 label = prefix+name
                 label_map[label].append(cnt)
+                if ref_points is not None:
+                    ref_map[label] = ref_points
                 break
 
         for label, contours in label_map.items():
-            self.sprite_masks.append(SpriteMask(contours, label, self.size))
+            self.sprite_masks.append(SpriteMask(contours, bonus_prefix+label, self.size, ref_map.get(label)))
 
     @classmethod
     def _convert_number(cls, x):
@@ -385,12 +401,17 @@ class GimpProject():
 
         return result
 
-    def extract_sprite_frames(self, composed_frame: Image, sprite_group = 'sprites'):
+    def extract_sprite_frames(self, composed_frame: Image, suffix = None, filter_func = None):
 
         result = {}
 
         for sprite_mask in self.sprite_masks:
             sprite_name = sprite_mask.label
+            if filter_func is not None and not filter_func(sprite_name):
+                continue
+
+            if suffix is not None:
+                sprite_name += suffix
             mask = sprite_mask.image
             bbox = mask.getbbox()
 
@@ -408,6 +429,9 @@ class GimpProject():
 
 #            out_frame = out_frame.crop(ebbox)
             out_frame = out_frame.transform((w,h), Image.Transform.EXTENT, ebbox, resample=Image.Resampling.BILINEAR)
+
+            if sprite_mask.angle is not None:
+                out_frame = out_frame.rotate(sprite_mask.angle, resample=Image.Resampling.BICUBIC, expand=True)
 
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
@@ -531,7 +555,7 @@ class GimpProject():
         except:
             return name
 
-    def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, **custom_gif_kwargs):
+    def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, sprite_scale = 1, sprite_prefix = '', **custom_gif_kwargs):
         output_dir = os.path.join(self.output_dir, output_dir)
         os.makedirs(output_dir, exist_ok = True)
         gif_kwargs = {
@@ -546,13 +570,16 @@ class GimpProject():
         if gui_scale:
             tile_size *= 6
 
+        tile_size *= sprite_scale
+
         for sprite_name, frames in sorted(self.sprites.items()):
+            sprite_name = sprite_prefix+sprite_name
             print(f'Writing {sprite_name}')
             frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
             base = frames[0]
             base.save(os.path.join(output_dir, f'{sprite_name}.gif'), save_all=True, append_images=frames[1:], **gif_kwargs)
 
-    def export_sprites(self, output_dir, pixel_size=None, tile_size=None, gui_scale = False):
+    def export_sprites(self, output_dir, pixel_size=None, tile_size=None, gui_scale = False, sprite_scale=1, sprite_prefix = ''):
         output_dir = os.path.join(self.output_dir, output_dir)
         os.makedirs(output_dir, exist_ok = True)
 
@@ -561,7 +588,10 @@ class GimpProject():
         if gui_scale:
             tile_size *= 6
 
+        tile_size *= sprite_scale
+
         for sprite_name, frames in sorted(self.sprites.items()):
+            sprite_name = sprite_prefix+sprite_name
             print(f'Writing {sprite_name}')
             frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
             sprite_name = self.fix_sprite_name(sprite_name)

@@ -105,10 +105,23 @@ class TextBox():
         screen.blit(text, (self.xpos, self.ypos))
 
 class Contour():
-    def __init__(self, contour, point = None, label = None):
+    def __init__(self, contour, point = None, label = None, ref_points = None):
         self.contour = contour
         self.point = point
         self.label = TextControl(label, self)
+        self.ref_points = ref_points
+
+    def set_ref_start(self, pos):
+        if self.ref_points is None:
+            self.ref_points = [pos, pos]
+        else:
+            self.ref_points[0] = pos
+
+    def set_ref_end(self, pos):
+        if self.ref_points is None:
+            self.ref_points = [pos, pos]
+        else:
+            self.ref_points[1] = pos
 
     def get_hit(self, pos):
         return cv2.pointPolygonTest(self.contour, pos, False) > 0
@@ -133,6 +146,14 @@ class Contour():
             xp,yp = [a*scale for a in self.point]
             pygame.gfxdraw.filled_circle(screen, round(xp),round(yp), 5, color)
 
+        if self.ref_points is not None:
+            xp,yp = [a*scale for a in self.ref_points[0]]
+            xq,yq = [a*scale for a in self.ref_points[1]]
+            pygame.gfxdraw.filled_circle(screen, round(xp),round(yp), 2, color)
+            pygame.gfxdraw.filled_circle(screen, round(xq),round(yq), 2, color)
+            pygame.gfxdraw.line(screen, round(xp), round(yp), round(xq), round(yq), color)
+
+
         if self.label.text is not None:
             text = self.label.text
             if prefix is not None:
@@ -142,6 +163,42 @@ class Contour():
             ypos = round(y+3)
             pygame.gfxdraw.box(screen, pygame.Rect(xpos, ypos, *text.get_size()), (0,0,0,128))
             screen.blit(text, (xpos, ypos))
+
+    def render_zoom(self, screen, app, selected):
+        color = (0,255,0)
+        if self.point is None or self.label.text is None:
+            color = (255,0,0)
+
+        if selected:
+            color = (255,0,255)
+
+        if self.point is not None:
+            xp,yp = app.image_to_zoom(self.point)
+            if app.in_zoom((xp, yp)):
+                pygame.gfxdraw.filled_circle(screen, round(xp),round(yp), 8, color)
+
+
+        if self.ref_points is not None:
+            xp, yp = app.image_to_zoom(self.ref_points[0])
+            xq, yq = app.image_to_zoom(self.ref_points[1])
+
+            if app.in_zoom((xp, yp)) or app.in_zoom((xp, xq)):
+                dx = xp-xq
+                dy = yp-yq
+
+                a = math.atan2(dy, dx)
+
+                pygame.gfxdraw.filled_circle(screen, round(xp),round(yp), 2, color)
+                pygame.gfxdraw.filled_circle(screen, round(xq),round(yq), 2, color)
+                pygame.gfxdraw.line(screen, round(xp), round(yp), round(xq), round(yq), color)
+
+                points = [[round(xq), round(yq)]]
+                for da in [math.pi/8, -math.pi/8]:
+                    dx = 16*math.cos(a+da)
+                    dy = 16*math.sin(a+da)
+                    points.append([round(xq+dx), round(yq+dy)])
+                pygame.gfxdraw.filled_polygon(screen, points, color)
+
 
 
 
@@ -192,13 +249,13 @@ class App():
         self.grid_image = self.project.layers['grid'].image
 #        self.base_image = self.project.get_expanded_layer('sprites', self.padding)
         self.base_surface = image_to_surface(self.base_image)
-        self.grid_surface = image_to_surface(self.grid_image)
+        self.base_grid_surface = image_to_surface(self.grid_image)
 
         w,h = self.base_surface.get_size()
 
         self.scale = min(cwidth/w, cheight/h)
         self.bg_surface = pygame.transform.scale_by(self.base_surface, self.scale)
-        self.grid_surface = pygame.transform.scale_by(self.grid_surface, self.scale)
+        self.grid_surface = pygame.transform.scale_by(self.base_grid_surface, self.scale)
 
         self.text_boxes = []
 
@@ -211,11 +268,15 @@ class App():
         self.prefix_box = TextBox(xpos, ypos, 'Prefix', config.get('prefix'))
         self.text_boxes.append(self.prefix_box)
 
-
-
         self.recompute_contours(config.get('labels', []))
 
         self.selection = None
+
+        self.zoom_size = (250,250)
+        self.zoom_target = (400,400)
+        self.zoom_pos = (0,0)
+        self.zoom_scale = self.zoom_target[0]/self.zoom_size[0]
+        self.recompute_zoom_surface()
 
     def recompute_contours(self, labels=None):
         if labels is None:
@@ -224,11 +285,17 @@ class App():
         self.contours = self.project.get_layer_segments('sprites', self.padding)
         self.contours = [Contour(x) for x in self.contours]
 
-        for label, point in labels:
+        for entry in labels:
+            label = entry[0]
+            point = entry[1]
+            ref_points = None
+            if len(entry) > 2:
+                ref_points = entry[2]
             for cnt in self.contours:
                 if cnt.get_hit(point):
                     cnt.point = point
                     cnt.label.text = label
+                    cnt.ref_points = ref_points
 
     def extract_labels(self):
         labels = []
@@ -236,7 +303,7 @@ class App():
             if cnt.point is None or cnt.label.text is None:
                 continue
             text = cnt.label.text
-            labels.append((text, cnt.point))
+            labels.append((text, cnt.point, cnt.ref_points))
         return labels
 
     def count_labels(self):
@@ -304,6 +371,28 @@ class App():
 
     def screen_to_image(self, pos):
         return tuple(x/self.scale for x in pos)
+
+    def in_zoom(self, pos):
+        if pos[0] < width-self.zoom_target[0]: return False
+        if pos[1] < height-self.zoom_target[1]: return False
+        return True
+
+    def image_to_zoom(self, pos):
+        xscale = self.zoom_target[0]/self.zoom_size[0]
+        yscale = self.zoom_target[1]/self.zoom_size[1]
+
+        return ((pos[0]-self.zoom_pos[0])*xscale+width-self.zoom_target[0],
+                (pos[1]-self.zoom_pos[1])*xscale+height-self.zoom_target[1])
+
+    def zoom_to_image(self, pos):
+        xscale = self.zoom_target[0]/self.zoom_size[0]
+        yscale = self.zoom_target[1]/self.zoom_size[1]
+        xpos = width - self.zoom_target[0]
+        ypos = height - self.zoom_target[1]
+
+        return (self.zoom_pos[0] + (pos[0]-xpos)/xscale, self.zoom_pos[1]+(pos[1]-ypos)/yscale)
+
+
 
     def select_contour(self, mpos, auto_label, auto_inc):
         pos = self.screen_to_image(mpos)
@@ -386,9 +475,16 @@ class App():
             ypos += text.get_height()
 
 
-
+    def recompute_zoom_surface(self):
+        zoom = pygame.Surface(self.zoom_size)
+        zoom_rect = pygame.Rect(*self.zoom_pos,*self.zoom_size)
+        zoom.blit(self.base_grid_surface, (0,0), zoom_rect)
+        zoom.blit(self.base_surface, (0,0), zoom_rect)
+        self.zoom_surface = pygame.transform.smoothscale(zoom, self.zoom_target)
 
     def run(self):
+        self.ref_dragging = False
+        self.zoom_dragging = False
         while True:
             mpos = pygame.mouse.get_pos()
             keys = pygame.key.get_pressed()
@@ -404,19 +500,27 @@ class App():
                     if event.button == MMB:
                         pass
                     elif event.button == LMB:
+                        self.ref_dragging = False
                         pass
                     elif event.button == RMB:
-                        pass
+                        self.zoom_dragging = False
                 elif event.type == MOUSEBUTTONDOWN:
                     if event.button == MMB:
                         pass
                     elif event.button == LMB:
-                        for box in self.text_boxes:
-                            if box.get_hit(mpos):
-                                self.selection = box.text
-                                break
+                        if self.in_zoom(mpos):
+                            if self.selection is not None and self.selection.parent is not None:
+                                self.selection.parent.set_ref_start(self.zoom_to_image(mpos))
+                                self.ref_dragging = True
                         else:
-                            self.select_contour(mpos, not mods & KMOD_CTRL, not mods & KMOD_SHIFT)
+                            for box in self.text_boxes:
+                                if box.get_hit(mpos):
+                                    self.selection = box.text
+                                    break
+                            else:
+                                self.select_contour(mpos, not mods & KMOD_CTRL, not mods & KMOD_SHIFT)
+                    elif event.button == RMB:
+                        self.zoom_dragging = True
                 elif event.type == KEYDOWN:
                     if event.mod & KMOD_CTRL:
                         if event.key == K_o:
@@ -433,8 +537,28 @@ class App():
 
                         if self.selection.parent is not None:
                             if event.key == K_DELETE:
-                                self.selection.parent.point = None
-                                self.dirty = True
+                                if not self.ref_dragging:
+                                    self.selection.parent.point = None
+                                    self.dirty = True
+                                else:
+                                    self.selection.parent.ref_points = None
+                                    self.dirty = True
+                                    self.ref_dragging = False
+
+            if self.ref_dragging:
+                self.selection.parent.set_ref_end(self.zoom_to_image(mpos))
+                self.dirty = True
+
+
+            if self.zoom_dragging:
+                x,y = self.screen_to_image(mpos)
+                x -= self.zoom_size[0]/2
+                y -= self.zoom_size[1]/2
+                x = max(x, 0)
+                y = max(y, 0)
+                self.zoom_pos = (x,y)
+                self.recompute_zoom_surface()
+
 
 
             self.screen.fill( (64,64,64) )
@@ -444,9 +568,22 @@ class App():
 
             self.screen.blit(self.bg_surface, (0,0))
 
+            zp = self.image_to_screen(self.zoom_pos)
+            zw, zh = [x*self.scale for x in self.zoom_size]
+
+            self.screen.blit(self.zoom_surface, (width-self.zoom_target[0], height-self.zoom_target[1]))
+
+            zoom_rect = pygame.Rect(zp[0],zp[1],zw, zh)
+            pygame.gfxdraw.box(self.screen, zoom_rect, (0,0,0,64))
+
+
+
             for cnt in self.contours:
                 is_sel = self.selection is not None and cnt is self.selection.parent
                 cnt.render(self.screen, self.scale, is_sel, self.prefix_box.text.text)
+                cnt.render_zoom(self.screen, self, is_sel)
+
+
 
             self.render_config()
 

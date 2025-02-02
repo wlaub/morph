@@ -264,9 +264,9 @@ class GridControl():
         self.compute_params()
         if data is None:
             self.init_refs()
-            self.grayscale = 1
-            self.contrast = 1
-            self.brightness = 1
+            self.grayscale = 0.1
+            self.contrast = 7.2
+            self.brightness = 0.6
             self.sharpness = 1
         else:
             self.load(data)
@@ -721,7 +721,10 @@ class App():
         if self.project_dir is None:
             self.prompt_load()
         else:
-            self.load()
+            try:
+                self.load()
+            except:
+                self.prompt_load()
 
     def prompt_load(self):
         project_dir = app_config.memory_select(cfd.choose_folder)
