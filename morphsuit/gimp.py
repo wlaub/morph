@@ -82,7 +82,7 @@ class SpriteMask():
 
 
 class GimpProject():
-    def __init__(self, project_dir):
+    def __init__(self, project_dir, segs_filename = 'segs.json'):
 
         self.project_dir = project_dir
 
@@ -92,7 +92,7 @@ class GimpProject():
         self.data = GimpDocument(self.filename)
 
         gato_file = os.path.join(project_dir, 'gato.json')
-        segs_file = os.path.join(project_dir, 'segs.json')
+        segs_file = os.path.join(project_dir, segs_filename)
 
         self.gato_config = None
         if os.path.exists(gato_file):
@@ -401,7 +401,7 @@ class GimpProject():
 
         return result
 
-    def extract_sprite_frames(self, composed_frame: Image, suffix = None, filter_func = None):
+    def extract_sprite_frames(self, composed_frame: Image, suffix = None, filter_func = None, global_angle = None):
 
         result = {}
 
@@ -430,8 +430,14 @@ class GimpProject():
 #            out_frame = out_frame.crop(ebbox)
             out_frame = out_frame.transform((w,h), Image.Transform.EXTENT, ebbox, resample=Image.Resampling.BILINEAR)
 
-            if sprite_mask.angle is not None:
-                out_frame = out_frame.rotate(sprite_mask.angle, resample=Image.Resampling.BICUBIC, expand=True)
+            if sprite_mask.angle is not None or global_angle is not None:
+                if sprite_mask.angle is not None:
+                    angle = sprite_mask.angle
+                else:
+                    angle = 0
+                if global_angle is not None:
+                    angle+=global_angle
+                out_frame = out_frame.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
 
             _frames = self.sprites.setdefault(sprite_name, [])
             _frames.append(out_frame)
