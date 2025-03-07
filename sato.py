@@ -8,7 +8,7 @@ import tabulate
 
 from gimpformats.gimpXcfDocument import GimpDocument
 
-from PIL import Image, ImageChops, ImageEnhance
+from PIL import Image, ImageChops, ImageEnhance, ImageOps
 import numpy as np
 
 import crossfiledialog as cfd
@@ -59,6 +59,9 @@ app_config = ui.AppConfig('gato')
 class AlignmentControl():
     def __init__(self, base_image, target_image):
         self.base_image = base_image
+
+        self.normal = False
+        self.other = False
 
         self.image_size = 200
         self.render_size = 1000
@@ -111,16 +114,52 @@ class AlignmentControl():
         y = h/2-self.render_size/2+(yoff)*s
 
         base_image = self.scaled_image.crop([x, y, x+self.render_size, y+self.render_size])
+        if self.normal:
+            return base_image
+
         x += offset[0]*self.scale
         y += offset[1]*self.scale
         x = round(x)
         y = round(y)
         other_image = self.target_image.crop([x, y, x+self.render_size, y+self.render_size])
 
+        if self.other:
+            return other_image
+
+#        base_image = ImageOps.invert(base_image)
 
         result = ImageChops.subtract(other_image, base_image, scale=1/self.color_scale, offset=self.color_offset)
 
         return result
+
+    def find_best_offset(self, offset):
+        scale = 20
+        iscale = 0.05
+
+        scale = self.scale
+        iscale = 1/self.scale
+
+        r = math.ceil(2*scale)
+        best = 0
+        best_offset = None
+#        print(r, r/self.scale)
+
+#        print(f'{offset[0]-r*iscale} to {offset[0]+(r-1)*iscale}')
+#        print(f'{offset[1]-r*iscale} to {offset[1]+(r-1)*iscale}')
+        for dx in range(-r, r):
+            for dy in range(-r,r):
+                toffset = [offset[0] + dx*iscale, offset[1] + dy*iscale]
+                image = self.make_render_image(toffset, [0,0])
+                data = np.array(image)
+
+                value = data.sum()
+#                print(toffset)
+                if 1/value > best:
+                    print(value, toffset)
+                    best = 1/value
+                    best_offset = toffset
+        return best, best_offset
+
 
     def render(self, screen, offset, temp_offset):
         image = self.make_render_image(offset, temp_offset)
@@ -419,6 +458,24 @@ class App():
                         pass
                     elif event.key == K_ESCAPE:
                         self.dragging = False
+                    elif event.key == K_1:
+                        self.alignment_control.normal = False
+                        self.alignment_control.other = False
+                    elif event.key == K_2:
+                        self.alignment_control.normal = True
+                        self.alignment_control.other = False
+                    elif event.key == K_3:
+                        self.alignment_control.normal = False
+                        self.alignment_control.other = True
+                    elif event.key == K_z:
+                        self.best, self.best_offset = self.alignment_control.find_best_offset(offset)
+                        self.offsets[self.active_image] = self.best_offset
+                        print(self.best, self.best_offset)
+                    elif event.key == K_x:
+                        self.offsets[self.active_image] = self.best_offset
+
+
+
 
             offset = self.get_relative_offset(mpos)
 

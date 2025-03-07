@@ -38,7 +38,7 @@ class WrappedLayer():
         return getattr(self.layer, name)
 
 class SpriteMask():
-    def __init__(self, contours, label, size, ref_points = None):
+    def __init__(self, contours, label, size, ref_points = None, offset=None):
         self.contours = contours
         self.label = label
         self.size = size
@@ -50,14 +50,18 @@ class SpriteMask():
             self.angle = math.atan2(dy, dx)*180/math.pi
             print(f'{label}: {self.angle}')
 
-        self.render_mask()
+        self.render_mask(offset)
 
-    def render_mask(self):
+    def render_mask(self, offset=None):
         #I don't want to think about w/h ordering or w/e
         image = Image.new('L', self.size, 0)
         image = np.array(image)
         cv2.drawContours(image, self.contours, -1, 255, -1)
         image = Image.fromarray(image)
+        if offset is not None:
+            out_image = Image.new('L', self.size, 0)
+            out_image.paste(image, [round(x) for x in offset])
+            image = out_image
         self.image = image
 
     def _bbox(self, cnt):
@@ -123,7 +127,7 @@ class GimpProject():
         labels = self.segs_config['labels']
         prefix = self.segs_config['prefix']
 
-        label_map = defaultdict(list)
+        self.label_map = label_map = defaultdict(list)
         ref_map = {}
 
         for cnt in contours:
@@ -264,11 +268,21 @@ class GimpProject():
         return Image.new('RGBA', size, color)
 
     def paste(self, base_image, paste_image):
+        alpha = 1
         if isinstance(paste_image, str):
+            layer = self.layers[paste_image]
+            alpha = layer.layer.opacity
+#            print(f'{alpha=}')
             paste_image = self.layers[paste_image].image
 
         if paste_image.has_transparency_data:
-            base_image.paste(paste_image, (0,0), paste_image)
+            mask = paste_image.getchannel('A')
+            r,g,b,mask = paste_image.split()
+            if alpha != 1:
+                mask = mask.point(lambda x: x*alpha)
+            effective_image = Image.merge('RGBA', (r,g,b,mask))
+            base_image.alpha_composite(effective_image)
+#            base_image.paste(paste_image, (0,0), mask)
         else:
             base_image.paste(paste_image, (0,0))
 
@@ -391,7 +405,11 @@ class GimpProject():
         else:
             result = target_layer.copy()
 
-        alpha = mask_layer.getchannel('A')
+        try:
+            alpha = mask_layer.getchannel('A')
+        except:
+            alpha = mask_layer
+
         try:
             alpha = ImageChops.multiply(alpha, result.getchannel('A'))
         except ValueError:
@@ -561,8 +579,11 @@ class GimpProject():
         except:
             return name
 
+    def get_output_path(self, output_dir):
+        return os.path.join(self.output_dir, output_dir)
+
     def export_sprites_gif(self, output_dir, pixel_size = None, tile_size = None, gui_scale = False, sprite_scale = 1, sprite_prefix = '', **custom_gif_kwargs):
-        output_dir = os.path.join(self.output_dir, output_dir)
+        output_dir = self.get_output_path(output_dir)
         os.makedirs(output_dir, exist_ok = True)
         gif_kwargs = {
             'duration': 100,
@@ -585,8 +606,8 @@ class GimpProject():
             base = frames[0]
             base.save(os.path.join(output_dir, f'{sprite_name}.gif'), save_all=True, append_images=frames[1:], **gif_kwargs)
 
-    def export_sprites(self, output_dir, pixel_size=None, tile_size=None, gui_scale = False, sprite_scale=1, sprite_prefix = ''):
-        output_dir = os.path.join(self.output_dir, output_dir)
+    def export_sprites(self, output_dir, pixel_size=None, tile_size=None, gui_scale = False, sprite_scale=1, sprite_prefix = '', actual_size = False):
+        output_dir = self.get_output_path(output_dir)
         os.makedirs(output_dir, exist_ok = True)
 
         pixel_size, tile_size = self._get_export_sizes(pixel_size, tile_size)
@@ -599,7 +620,8 @@ class GimpProject():
         for sprite_name, frames in sorted(self.sprites.items()):
             sprite_name = sprite_prefix+sprite_name
             print(f'Writing {sprite_name}')
-            frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
+            if not actual_size:
+                frames = [self.scale_to_tiles(x, pixel_size, tile_size) for x in frames]
             sprite_name = self.fix_sprite_name(sprite_name)
             for idx, frame in enumerate(frames):
                 frame_name = sprite_name
@@ -607,6 +629,8 @@ class GimpProject():
                     frame_name += f'{idx:02}'
                 frame.save(os.path.join(output_dir,f'{frame_name}.png'))
 
-
+            l,t,r,b = frame.getbbox()
+            print(f'{(r-l)/(b-t):0.2f}\t{sprite_name}')
+#            print(f'{(r-l):0.2f}, {(t-b):0.2f}\t{sprite_name}')
 
 

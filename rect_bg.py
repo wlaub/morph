@@ -41,9 +41,7 @@ project = gimp.GimpProject(project_dir)
 
 #project.init_sprites('sprites', 'bg')
 
-project.expand_layers('masks', 2, pad_bounds = False)
-
-
+#project.expand_layers('masks', 2, pad_bounds = False)
 
 #Build the frames
 #Build the entire frame
@@ -53,6 +51,10 @@ if False:
 composed_frame = project.make_new_image(color=color)
 #    project.paste(composed_frame, 'grid')
 
+#for mask_name, color_mask in color_masks.items():
+#    image = project.layers[color_mask].image
+#    project.paste(image, 'bg_haze')
+
 for mask_name in project.groups['masks']:
     if mask_name in color_masks.keys():
         color = color_masks[mask_name]
@@ -61,15 +63,39 @@ for mask_name in project.groups['masks']:
     else:
         print(f'Warning: unknown mask {mask_name}')
 
-#project.paste(composed_frame, 'bg_haze')
-#project.paste(composed_frame, 'bg_lines')
-#project.paste_group(composed_frame, 'overlays')
-
 #Chop it up into individual parts
 project.extract_sprite_frames(composed_frame)
 
 #project.export_sprites_gif('output/gifs', gui_scale=True)
-project.export_sprites('sprites', sprite_scale=6/7, sprite_prefix = 'bgl')
+project.export_sprites('bgr', sprite_scale=6/7, sprite_prefix = 'l.')
+project.export_sprites('bgr', sprite_scale=5/7, sprite_prefix = 's.')
+
+exit(0)
+
+project.sprites = {}
+color = (0,0,0,0)
+if False:
+    color= (255,255,255,255)
+composed_frame = project.make_new_image(color=color)
+#    project.paste(composed_frame, 'grid')
+
+for mask_name, color_mask in color_masks.items():
+    image = project.layers[color_mask].image
+    project.paste(image, 'bg_haze')
+
+for mask_name in project.groups['masks']:
+    if mask_name in color_masks.keys():
+        color = color_masks[mask_name]
+        a = project.mask_layers(str(color), mask_name)
+        project.paste(composed_frame, a)
+    else:
+        print(f'Warning: unknown mask {mask_name}')
+
+#Chop it up into individual parts
+project.extract_sprite_frames(composed_frame)
+
+
+
 project.export_sprites('sprites', sprite_scale=5/7, sprite_prefix = 'bgs')
 
 
