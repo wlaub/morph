@@ -69,7 +69,7 @@ project.paste(composed_frame, 'lines')
 project.extract_sprite_frames(composed_frame)
 
 #project.export_sprites_gif('output/gifs', gui_scale=True)
-#project.export_sprites('sprites')
+project.export_sprites('sprites')
 project.export_sprites('../../actual_size', sprite_scale=6)
 #project.export_sprites('rot_test')
 

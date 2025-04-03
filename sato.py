@@ -65,7 +65,7 @@ class AlignmentControl():
 
         self.image_size = 200
         self.render_size = 1000
-        self.margin = 100
+        self.margin = 500
         self.scale = s = self.render_size/self.image_size
 
         self.xoff = 0
@@ -245,6 +245,8 @@ class App():
         s = self.alignment_control.scale
 
         for idx, infile in enumerate(self.base_images):
+            import gc
+            gc.collect()
             inpath = os.path.join(self.input_dir, infile)
             outpath = os.path.join(self.output_dir, infile)
 

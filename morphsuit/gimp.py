@@ -86,11 +86,11 @@ class SpriteMask():
 
 
 class GimpProject():
-    def __init__(self, project_dir, segs_filename = 'segs.json'):
+    def __init__(self, project_dir, segs_filename = 'segs.json', gimp_file='inputs.xcf'):
 
         self.project_dir = project_dir
 
-        self.filename = os.path.join(project_dir, 'inputs.xcf')
+        self.filename = os.path.join(project_dir, gimp_file)
         self.cache_dir = os.path.join(project_dir, 'gimp_cache')
         self.output_dir = os.path.join(project_dir, 'outputs')
         self.data = GimpDocument(self.filename)
